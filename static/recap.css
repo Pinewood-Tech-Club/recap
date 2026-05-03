@@ -1,0 +1,157 @@
+* {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: "Noto Serif", serif;
+    font-optical-sizing: auto;
+    font-style: normal;
+    font-variation-settings:
+        "wdth" 100;
+}
+
+.recap-container {
+    position: fixed;
+    height: calc(100vh - 32px);
+    background: black;
+    width: calc((100vh - 32px) * 0.5625);
+    top: 16px;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 16px;
+    overflow: hidden;
+
+    @media (max-aspect-ratio: 3/5) {
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 100dvh;
+        transform: none;
+        border-radius: 0;
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
+
+.slide-base {
+    color: #fff;
+    height: 100%;
+}
+
+.slides {
+    height: 100%;
+}
+
+#slide1 .slide-1-hero {
+    position: relative;
+    z-index: 20;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8), 0 1px 3px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: start;
+    padding: 2rem;
+    gap: 1rem;
+    height: calc(100% - 4rem);
+    z-index: 1;
+}
+
+.slide-1-hero h1 {
+    font-size: 6rem;
+    font-weight: 700;
+}
+
+.slide-1-hero p {
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.slide-1-hero .txt-em {
+    color: #17d62d;
+    font-weight: 700;
+}
+
+a {
+    text-decoration: none;
+}
+
+#do-the-fade-in-thing {
+    animation: fade-in-delayed 5s;
+    font-size: 1.2rem;
+}
+
+@keyframes cas-char-bounce {
+    0%   { transform: translateY(0);     filter: brightness(1); }
+    25%  { transform: translateY(-10px); filter: brightness(1.4); }
+    75%  { transform: translateY(10px);  filter: brightness(1.2); }
+    100% { transform: translateY(0);     filter: brightness(1); }
+}
+@keyframes fade-in-delayed {
+    0%   { opacity: 0 }
+    75%  { opacity: 0 }
+    100% { opacity: 1 }
+}
+
+@keyframes title-text-fade-in {
+    0%   { font-weight: 100; opacity: 0 }
+    800% { font-weight: 900; opacity: 1 }
+    100% { font-weight: 700; opacity: 1 }
+}
+
+.photos-album-selection-scroll {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    overflow: hidden;
+    z-index: 0;
+    background-color: lab(37.4616% -36.7971 22.9692);
+}
+
+.photos-album-selection-scroll::before {
+    content: '';
+    position: absolute;
+    inset: -50%;
+    z-index: 0;
+    mix-blend-mode: soft-light;
+    opacity: 1;
+    background-image: url('/static/imag/crumple-texture.jpg');
+    background-size: cover;
+    background-position: var(--crinkle-x, 0%) var(--crinkle-y, 0%);
+    transform: rotate(var(--crinkle-rot, 0deg)) scale(2);
+    transform-origin: center;
+}
+
+.photo-wrap {
+    position: relative;
+}
+
+.photo-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+}
+
+.scroll-track {
+    position: absolute;
+    width: 67%;
+    left: 16.5%;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4rem;
+}
+
+.scroll-track img {
+    width: 100%;
+    display: block;
+    border: 4px solid white;
+    box-sizing: border-box;
+}

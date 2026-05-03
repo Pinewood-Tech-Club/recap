@@ -9,12 +9,11 @@
 body {
   margin: 0;
   font-family: "Inter", Arial, sans-serif;
-  background: var(--bg);
+  background: var(--fg);
   color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
   padding: 24px;
   overflow: auto;
 }

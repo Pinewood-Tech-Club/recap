@@ -1,67 +1,39 @@
-{% extends "layout.html" %}
-{% block title %}Schoology Recap{% endblock %}
-{% block meta %}
-  <meta property="og:title" content="Schoology Recap" />
-  <meta property="og:description" content="Explore your academic achievements from your past year and share them with friends!" />
-  {% if share_image_url %}
-  <meta property="og:image" content="{{ share_image_url }}" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="{{ share_image_url }}" />
-  {% endif %}
-{% endblock %}
-{% block content %}
-  <div class="sections">
-    <div class="controls-picker-list"></div>
-    <div class="existing-recap hidden">
-      <div class="card">
-        <h1>You already have a recap</h1>
-        <a class="button" onclick="viewExisting()">View Your Recap</a>
-        <p>Or <a onclick="generateNew()">generate a new one</a>.</p>
-        <p class="note">Generating a new recap will replace your existing one and may take a few minutes to complete.</p>
-        <p class="note">Your data is subject to our <a href="/terms">terms</a>.</p>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pinewood Recap</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='recap.css') }}">
+  </head>
+  <body>
+    <div class="recap-bg">
+      <div>
+        <p>Not in recap container</p>
       </div>
     </div>
-    <div class="generating-recap hidden">
-      <div class="card">
-        <h1>We&apos;re putting together your recap</h1>
-        <p>This may take a while. We&apos;ll send you an email when it&apos;s ready, and you can close this tab in the meantime.</p>
-        <p id="status">We&apos;ll have updates here soon...</p>
-        <p class="note">Your data is subject to our <a href="/terms">terms</a>.</p>
+    <div class="recap-container">
+      <div class="slides">
+        <div class="slide-base" id="slide1">
+          <div class="photos-album-selection-scroll"></div>
+          <div class="slide-1-hero">
+            <h1 id="txt-to-fade-in">Your Recap</h1>
+            <p>By the <a href="https://techclub.pw" target="_blank"><span class="txt-em cas-bounce">Pinewood Tech Club</span></a></p>
+            <p style="opacity: 1;" id="do-the-fade-in-thing">Click/tap to proceed, use arrow keys/swipe for navigation.</p>
+          </div>
+        </div>
+        <div class="slide-base" id="slide2" style="display: none">
+          <p>You completed</p>
+          <h1><placeholder data-var="total_assignments"></placeholder></h1>
+          <p>assignments this semester.</p>
+          <p>Your busiest month was <b><placeholder data-var="busiest_month"></placeholder></b> during which you completed <b><placeholder data-var="busiest_month_count"></placeholder></b> assignments.</p>
+          <div class="gh-contr-graph"></div>
+        </div>
       </div>
     </div>
-    <div class="recap-title-slide" id="recap-title-slide">
-      <h1 id="title-slide-headline">This is your recap</h1>
-      <p>Explore your academic achievements from your past year and share them with friends!</p>
-      <div class="recap-title-prompts" id="recap-title-prompts"></div>
-    </div>
-    <div class="actual-recap hidden" id="recap-container">
-    </div>
-    <div class="controls title-hidden">
-      <div class="left-side-controls">
-        <h2>Recap <span style="font-size: 10px;">by Tech Club</span></h2>
-        <!-- disable special effects toggle (default on) -->
-        <a class="controls-icon" data-tooltip="Toggle Effects" aria-label="Toggle Effects" onclick="toggleEffects()"><img src="/static/icons/fireworks.svg" alt="Effects" height="32" /></a>
-        <a class="controls-icon" data-tooltip="Download Current Slide As Image" aria-label="Download Current Slide As Image" onclick="downloadCurrentSlide()"><img src="/static/icons/square.and.arrow.down.svg" alt="Download" height="32" /></a>
-        <a class="controls-icon" id="copy-share-link" data-tooltip="Copy Share URL" aria-label="Copy Share URL" onclick="copyShareLink(this)"><img src="/static/icons/square.and.arrow.up.svg" alt="Copy Link" height="32" /></a>
-      </div>
-      <div class="slide-picker">
-        <a class="controls-icon" onclick="prevslide()"><img src="/static/icons/chevron.left.svg" alt="Previous" height="32" /></a>
-        <span class="controls-picker"></span>
-        <a class="controls-icon" onclick="nextslide()"><img src="/static/icons/chevron.right.svg" alt="Next" height="32" /></a>
-      </div>
-    </div>
-    <div class="helper" id="helper-container">
-      <!-- We will use this when user wants to download an image of their recap -->
-      <canvas id="vert-image-canvas" width="1920" height="1920"></canvas>
-      <!-- We pre generate the image to the current slide to make download instantaneous -->
-    </div>
-  </div>
-  <script>
-    const RECAP_ID = {{ recap_id|tojson }};
-    const EMAIL = {{ email|tojson }};
-    const SHOW_EXISTING = {{ show_existing|tojson }};
-    const IS_GENERATING = {{ is_generating|tojson }};
-    const SHARE_IMAGE_URL = {{ share_image_url|tojson }};
-  </script>
+  </body>
   <script src="{{ url_for('static', filename='js/recap.js') }}"></script>
-{% endblock %}
+</html>

@@ -51,6 +51,8 @@ except Exception:
 import schoolopy
 import requests_oauthlib
 import requests
+from xml.sax.saxutils import escape as xml_escape
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logging.basicConfig(
     level=logging.INFO,
@@ -600,6 +602,221 @@ def _to_float(val, default=0.0):
         return default
 
 
+def _chunked(lst, n):
+    lst = list(lst)
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+
+def _schoology_multiget(auth, paths):
+    """POST /v1/multiget; returns one payload dict per path (empty dict on per-item error)."""
+    body_lines = ['<?xml version="1.0" encoding="utf-8" ?>', '<requests>']
+    for path in paths:
+        body_lines.append(f'  <request>{xml_escape(path)}</request>')
+    body_lines.append('</requests>')
+    resp = auth.oauth.post(
+        f"{SCHOOLOGY_API_DOMAIN}/v1/multiget",
+        data='\n'.join(body_lines).encode('utf-8'),
+        headers={'Accept': 'application/json', 'Content-Type': 'text/xml; charset=utf-8'},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    raw = resp.json()
+
+    # Unwrap envelope — handle list-directly, nested dicts, multiple key names
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, dict):
+        items = next(
+            (raw[k] for k in ('responses', 'response', 'results', 'items') if isinstance(raw.get(k), list)),
+            None,
+        )
+        if items is None and 'responses' in raw and isinstance(raw['responses'], dict):
+            inner = raw['responses']
+            items = next(
+                (inner[k] for k in ('response', 'results', 'items') if isinstance(inner.get(k), list)),
+                None,
+            )
+        if items is None:
+            raise ValueError(f"Unexpected multiget envelope keys: {list(raw.keys())}")
+    else:
+        raise ValueError("multiget did not return JSON")
+
+    if len(items) != len(paths):
+        raise ValueError(f"multiget: sent {len(paths)} paths, got {len(items)} responses")
+
+    results = []
+    for item in items:
+        if not isinstance(item, dict):
+            results.append({})
+            continue
+        try:
+            code = int(
+                item.get('code') or item.get('status') or
+                item.get('status_code') or item.get('response_code') or 0
+            )
+            if code >= 400:
+                results.append({})
+                continue
+        except (TypeError, ValueError):
+            pass
+        # Unwrap body/data/result/response/payload — also handle JSON strings
+        payload = item
+        for key in ('body', 'data', 'result', 'response', 'payload'):
+            if key not in item:
+                continue
+            cand = item[key]
+            if isinstance(cand, dict):
+                payload = cand
+                break
+            if isinstance(cand, str) and cand.strip():
+                try:
+                    payload = json.loads(cand)
+                    break
+                except ValueError:
+                    pass
+        results.append(payload if isinstance(payload, dict) else {})
+    return results
+
+
+def _fetch_for_sections(auth, section_ids, sub_path, item_key, page_limit=200):
+    """
+    Batch-fetch a sub-resource for many sections via parallel multigets.
+    Returns {section_id_str: [item_dict, ...]} for all sections.
+    Falls back to serial paginated_list per section on chunk failure.
+    """
+    results = {str(sid): [] for sid in section_ids}
+    sid_list = list(section_ids)
+    paths = [f"/v1/sections/{sid}/{sub_path}?limit={page_limit}" for sid in sid_list]
+
+    chunks = list(zip(_chunked(paths, 50), _chunked(sid_list, 50)))
+
+    def _do_chunk(chunk_paths, chunk_sids):
+        return _schoology_multiget(auth, chunk_paths), list(chunk_sids)
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_sids = {
+            executor.submit(_do_chunk, list(cp), list(cs)): (list(cp), list(cs))
+            for cp, cs in chunks
+        }
+        for future in as_completed(future_to_sids):
+            chunk_paths, chunk_sids = future_to_sids[future]
+            try:
+                payloads, chunk_sids = future.result()
+            except Exception as exc:
+                logger.warning("multiget chunk failed for %s (%s), falling back to serial", sub_path, exc)
+                for sid in chunk_sids:
+                    try:
+                        results[str(sid)] = paginated_list(auth, f"sections/{sid}/{sub_path}", key=item_key)
+                    except Exception:
+                        pass
+                continue
+
+            for sid, payload in zip(chunk_sids, payloads):
+                if not payload:
+                    continue
+                items = payload.get(item_key, [])
+                if isinstance(items, dict):
+                    items = [items]
+                results[str(sid)] = list(items) if items else []
+
+                # Handle overflow pages serially (rare; only when server truncates at page_limit)
+                links = payload.get("links", {}) or {}
+                next_url = links.get("next")
+                while next_url:
+                    try:
+                        r = auth.oauth.get(next_url, timeout=30)
+                        r.raise_for_status()
+                        d = r.json() or {}
+                        more = d.get(item_key, [])
+                        if isinstance(more, dict):
+                            more = [more]
+                        results[str(sid)].extend(more)
+                        next_url = (d.get("links", {}) or {}).get("next")
+                    except Exception:
+                        break
+
+    return results
+
+
+def _fetch_user_submissions(auth, tasks, user_id):
+    """
+    Fetch per-user submission revisions for a list of (section_id, assignment_id) pairs.
+    Returns {(section_id, assignment_id): SimpleNamespace | None}.
+
+    Schoology's multiget API does not support the submissions endpoint, so we fire
+    individual GETs in parallel via ThreadPoolExecutor instead.
+    """
+    if not user_id:
+        return {}
+
+    def _sub_ts(s):
+        ts = parse_dt(getattr(s, "submitted", None)) or parse_dt(getattr(s, "created", None))
+        return ts or datetime.min
+
+    empty_revs = 0
+    wrong_uid  = 0
+    matched    = 0
+
+    def _fetch_one(sid, aid):
+        url = f"{SCHOOLOGY_API_DOMAIN}/v1/sections/{sid}/submissions/{aid}?all_revisions=true"
+        for attempt in range(5):
+            try:
+                resp = auth.oauth.get(url, timeout=15)
+                if resp.status_code == 429:
+                    wait = int(resp.headers.get("Retry-After", 2))
+                    time.sleep(wait)
+                    continue
+                return (sid, aid), resp.status_code, resp.json() if resp.status_code == 200 else {}
+            except Exception as exc:
+                logger.warning("submission GET error (%s, %s): %s", sid, aid, exc)
+                return (sid, aid), 0, {}
+        logger.warning("submission %s/%s still 429 after 5 attempts", sid, aid)
+        return (sid, aid), 429, {}
+
+    output = {}
+    # max_workers=3 keeps us under Schoology's 15-req/5s rate limit
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {executor.submit(_fetch_one, sid, aid): (sid, aid) for sid, aid in tasks}
+        for future in as_completed(futures):
+            (sid, aid), status, data = future.result()
+
+            if status != 200:
+                output[(sid, aid)] = None
+                continue
+
+            revs = data.get("revision") or data.get("submission") or []
+            if isinstance(revs, dict) and "revision" in revs:
+                revs = revs["revision"]
+            if not isinstance(revs, list):
+                revs = []
+
+            if not revs:
+                empty_revs += 1
+                output[(sid, aid)] = None
+                continue
+
+            user_revs = [to_obj(r) for r in revs if str(r.get("uid", "")) == str(user_id)]
+            if not user_revs:
+                wrong_uid += 1
+                if wrong_uid == 1:
+                    sample_uids = list({str(r.get("uid", "?")) for r in revs[:5]})
+                    logger.info("uid mismatch: want %s got %s (aid=%s)", user_id, sample_uids, aid)
+                output[(sid, aid)] = None
+                continue
+
+            matched += 1
+            latest = max(user_revs, key=_sub_ts)
+            latest._section_id = sid
+            latest._assignment_id = aid
+            output[(sid, aid)] = latest
+
+    logger.info("submissions: %d tasks → matched=%d empty=%d uid_mismatch=%d errors=%d",
+                len(tasks), matched, empty_revs, wrong_uid,
+                sum(1 for v in output.values() if v is None) - empty_revs - wrong_uid)
+    return output
+
+
 def generate_share_images(slides: dict, recap_id: str):
     """Generate shareable recap grid image and stash path in slides."""
     static_root = app.static_folder or os.path.join(app.root_path, "static")
@@ -784,67 +1001,56 @@ def build_recap(payload):
 
     notify_progress(job_id, {"status": "running", "stage": "sections", "count": len(sections)})
 
-    # Enrollment cache for classmate counts (paged)
-    section_enrollments = {}
-    for section in sections:
-        try:
-            enrollments_raw = paginated_list(auth, f"sections/{section.id}/enrollments", key="enrollment")
-            section_enrollments[section.id] = [to_obj(e) for e in enrollments_raw]
-        except Exception:
-            section_enrollments[section.id] = []
+    section_ids = [s.id for s in sections]
+    section_lookup = {s.id: s for s in sections}
 
+    # Batch-fetch enrollments for all sections
+    notify_progress(job_id, {"status": "running", "stage": "enrollments"})
+    raw_enrollments = _fetch_for_sections(auth, section_ids, "enrollments", "enrollment")
+    section_enrollments = {
+        sid: [to_obj(e) for e in raw_enrollments.get(str(sid), [])]
+        for sid in section_ids
+    }
+
+    # Batch-fetch assignments for all sections
+    notify_progress(job_id, {"status": "running", "stage": "assignments"})
+    raw_assignments = _fetch_for_sections(auth, section_ids, "assignments", "assignment")
     assignments_by_section = defaultdict(list)
-    # Store only the latest submission per assignment for this user
-    latest_submissions: dict[str, SimpleNamespace] = {}
-    section_lookup = {}
-    processed_assignments = 0
+    for sid in section_ids:
+        assignments_by_section[sid] = [to_obj(a) for a in raw_assignments.get(str(sid), [])]
 
+    # Push per-section assignment lists to clients for the debug/stream view
     for section in sections:
-        section_lookup[section.id] = section
-        try:
-            assignments_raw = paginated_list(auth, f"sections/{section.id}/assignments", key="assignment")
-            assignments = [to_obj(a) for a in assignments_raw]
-            assignments_by_section[section.id] = assignments
+        assigns = assignments_by_section[section.id]
+        notify_progress(job_id, {
+            "status": "running",
+            "stage": "assignment_batch",
+            "course": getattr(section, "course_title", "Unknown Course"),
+            "assignments": [getattr(a, "title", f"Assignment {a.id}") for a in assigns],
+        })
 
-            for assignment in assignments:
-                subs_raw = []
-                try:
-                    subs_raw = paginated_list(
-                        auth,
-                        f"sections/{section.id}/assignments/{assignment.id}/submissions",
-                        key="submission",
-                    )
-                except Exception:
-                    subs_raw = []
-                # Filter to the current user and keep the latest submission
-                latest = get_latest_user_submission(sc, auth, section.id, assignment.id, user_id)
-                if latest:
-                    latest._section_id = section.id  # noqa: SLF001
-                    latest._assignment_id = assignment.id  # noqa: SLF001
-                    latest_submissions[str(assignment.id)] = latest
-                if VERBOSE_PROGRESS:
-                    logger.info(
-                        "Assignment processed %s / section %s / subs_seen=%s / latest_for_user=%s",
-                        getattr(assignment, "title", ""),
-                        getattr(section, "course_title", ""),
-                        len(subs_raw or []),
-                        str(str(assignment.id) in latest_submissions),
-                    )
-                processed_assignments += 1
-                if processed_assignments % 10 == 0:
-                    notify_progress(
-                        job_id,
-                        {
-                            "status": "running",
-                            "stage": "assignments",
-                            "section": getattr(section, "course_title", ""),
-                            "processed": processed_assignments,
-                        },
-                    )
-        except Exception as e:  # pylint: disable=broad-except
-            logger.warning("Failed assignments for section %s: %s", getattr(section, "id", "?"), e)
-            continue
+    logger.info("user_id=%s  sections=%d", user_id, len(sections))
+    for section in sections:
+        acount = len(assignments_by_section[section.id])
+        sample_ids = [str(a.id) for a in assignments_by_section[section.id][:3]]
+        logger.info("  section %s (%s): %d assignments, sample ids=%s",
+                    section.id, getattr(section, "course_title", "?"), acount, sample_ids)
 
+    # Batch-fetch submissions for all (section, assignment) pairs
+    all_tasks = [
+        (section.id, assignment.id)
+        for section in sections
+        for assignment in assignments_by_section[section.id]
+    ]
+    notify_progress(job_id, {"status": "running", "stage": "submissions", "total": len(all_tasks)})
+    raw_submissions = _fetch_user_submissions(auth, all_tasks, user_id)
+
+    latest_submissions: dict[str, SimpleNamespace] = {
+        str(aid): obj
+        for (sid, aid), obj in raw_submissions.items()
+        if obj is not None
+    }
+    logger.info("latest_submissions: %d entries", len(latest_submissions))
     now = datetime.utcnow()
 
     assignment_lookup = {}
@@ -1171,27 +1377,38 @@ def delete_recap_by_email():
 # WebSocket for live progress updates
 @sock.route("/ws/job/<job_id>")
 def job_ws(ws, job_id):
-    # Send initial state
-    job = get_job(job_id)
-    if job:
-        initial_state = {
-            "status": job["status"],
-            "progress": job["progress"],
-        }
-        ws.send(json.dumps(initial_state))
-
-    # Subscribe to updates
+    # Subscribe BEFORE reading initial state so no notification can slip through
     q = queue.Queue()
     subscribers.setdefault(job_id, []).append(q)
 
     try:
+        # Send initial state; handle race where job finished before WS connected
+        job = get_job(job_id)
+        if job:
+            ws.send(json.dumps({"status": job["status"], "progress": job["progress"]}))
+        else:
+            recap = get_recap_by_id(job_id)
+            if recap and recap.get("slides"):
+                # Job already done — tell client to fetch via HTTP (avoids sending huge payload)
+                ws.send(json.dumps({"status": "done"}))
+                return
+
         while True:
-            payload = q.get()
-            ws.send(json.dumps(payload))
+            try:
+                payload = q.get(timeout=25)
+            except queue.Empty:
+                ws.send(json.dumps({"type": "heartbeat"}))
+                continue
+            # Strip slides from the WebSocket message — client fetches via HTTP on "done"
+            if payload.get("status") == "done":
+                ws.send(json.dumps({"status": "done"}))
+            else:
+                ws.send(json.dumps(payload))
+            if payload.get("status") in ("done", "error"):
+                break
     except Exception:
-        pass
+        logger.exception("WS error for job %s", job_id)
     finally:
-        # Cleanup
         subs = subscribers.get(job_id, [])
         if q in subs:
             subs.remove(q)
