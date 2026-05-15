@@ -3,12 +3,22 @@
     padding: 0;
 }
 
+:root {
+    --su: 1vh;
+}
+
 body {
     font-family: "Noto Serif", serif;
     font-optical-sizing: auto;
     font-style: normal;
     font-variation-settings:
         "wdth" 100;
+}
+
+@media (prefers-color-scheme: dark) {
+    body {
+        background: #000;
+    }
 }
 
 .recap-container {
@@ -20,7 +30,7 @@ body {
     bottom: 16px;
     left: 50%;
     transform: translateX(-50%);
-    border-radius: 16px;
+    border-radius: calc(1.8 * var(--su));
     overflow: hidden;
 
     @media (max-aspect-ratio: 3/5) {
@@ -52,20 +62,21 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: start;
-    padding: 2rem;
-    gap: 1rem;
-    height: calc(100% - 4rem);
+    padding: calc(3.6 * var(--su));
+    gap: calc(1.8 * var(--su));
+    height: calc(100% - 7.2 * var(--su));
     z-index: 1;
 }
 
 .slide-1-hero h1 {
-    font-size: 6rem;
+    font-size: calc(10.9 * var(--su));
     font-weight: 700;
 }
 
 .slide-1-hero p {
     opacity: 0;
     transition: opacity 0.2s;
+    font-size: calc(1.8 * var(--su));
 }
 
 .slide-1-hero .txt-em {
@@ -79,19 +90,29 @@ a {
 
 #do-the-fade-in-thing {
     animation: fade-in-delayed 5s;
-    font-size: 1.2rem;
+    font-size: calc(2.2 * var(--su));
 }
 
 @keyframes cas-char-bounce {
     0%   { transform: translateY(0);     filter: brightness(1); }
-    25%  { transform: translateY(-10px); filter: brightness(1.4); }
-    75%  { transform: translateY(10px);  filter: brightness(1.2); }
+    25%  { transform: translateY(-4px); filter: brightness(1.5); }
+    75%  { transform: translateY(4px);  filter: brightness(1.2); }
     100% { transform: translateY(0);     filter: brightness(1); }
 }
 @keyframes fade-in-delayed {
     0%   { opacity: 0 }
     75%  { opacity: 0 }
     100% { opacity: 1 }
+}
+
+@keyframes char-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes graph-rise {
+    from { opacity: 0; transform: translateY(8vh); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes title-text-fade-in {
@@ -146,12 +167,270 @@ a {
     top: 0;
     display: flex;
     flex-direction: column;
-    gap: 4rem;
+    gap: calc(7.2 * var(--su));
 }
 
 .scroll-track img {
     width: 100%;
     display: block;
-    border: 4px solid white;
+    border: calc(0.9 * var(--su)) solid white;
     box-sizing: border-box;
+    box-shadow:rgba(0, 0, 0, 0.4) 2px 2px 8px;
+}
+
+.s2cont {
+    padding: calc(2.7 * var(--su));
+    font-weight: 300;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+}
+
+.s2-count-container {
+    position: relative;
+    display: inline-block;
+    width: fit-content;
+    padding: 0 calc(1.2 * var(--su));
+    margin: calc(2 * var(--su)) 0;
+    z-index: 1;
+}
+
+.s2-graph-paper-bg {
+    position: absolute;
+    inset: 0;
+    background-image: url('/static/imag/NoteCard.svg');
+    background-size: auto calc(22 * var(--su));
+    background-position: var(--gp-x, 20%) var(--gp-y, 40%);
+    transform: rotate(var(--gp-rot, 0deg)) scale(var(--gp-scale, 1.0));
+    transform-origin: center;
+    clip-path: polygon(var(--gp-clip, 0% 0%, 100% 0%, 100% 100%, 0% 100%));
+    pointer-events: none;
+    z-index: 3;
+    opacity: 0;
+}
+
+.s2-count-container h1 {
+    position: relative;
+    z-index: 5;
+}
+
+.s2-clip-full {
+    position: absolute;
+    height: calc(15 * var(--su));
+    width: auto;
+    z-index: 1;
+    pointer-events: none;
+    top: 50%;
+    left: 50%;
+    opacity: 0;
+}
+
+.s2-clip-top {
+    position: absolute;
+    height: calc(15 * var(--su));
+    width: auto;
+    z-index: 20;
+    pointer-events: none;
+    top: 50%;
+    left: 50%;
+    opacity: 0;
+}
+
+.s2cont h1 {
+    font-weight: 700;
+    font-size: calc(21 * var(--su));
+    line-height: 0.95;
+    color: #f0b93a;
+}
+
+.for2subtxt {
+    font-size: calc(3.6 * var(--su));
+}
+
+.for2stat2 {
+    font-size: calc(3.3 * var(--su));
+    margin-top: calc(1.8 * var(--su));
+    line-height: 1.1;
+}
+
+.val-primary {
+    font-weight: 700;
+    color: #f0b93a;
+}
+
+.val-secondary {
+    font-weight: 700;
+    color: #3dd68c;
+}
+
+/* ── Slide 2 background — construction paper ────────────────────────────── */
+
+#slide2 {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background-image: url('/static/imag/const_paper.webp');
+    background-size: cover;
+    background-position: center;
+}
+
+#slide2::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: #4a6b58;
+    mix-blend-mode: multiply;
+    z-index: 0;
+    pointer-events: none;
+}
+
+#slide2 .s2cont {
+    position: relative;
+    z-index: 1;
+}
+
+/* ── Slide 3 background ─────────────────────────────────────────────────── */
+
+#slide3 {
+    position: relative;
+    background-image: url('/static/imag/const_paper.webp');
+    background-size: cover;
+    background-position: center;
+}
+
+#slide3::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: #7a5a1a;
+    mix-blend-mode: multiply;
+    z-index: 0;
+    pointer-events: none;
+}
+
+#slide3 .s2cont {
+    position: relative;
+    z-index: 1;
+}
+
+/* ── Contribution graph (slide 2) ───────────────────────────────────────── */
+
+.gh-contr-graph {
+    left: 1rem;
+    right: 1rem;
+    padding: calc(0.5 * var(--su)) calc(1.5 * var(--su));
+    padding-bottom: calc(1.5*var(--su));
+    margin-top: calc(2*var(--su));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background-image: url('/static/imag/const_paper.webp');
+    background-color: #8a6a20;
+    background-blend-mode: multiply;
+    background-size: cover;
+    background-position: center;
+    overflow: hidden;
+}
+
+.cg-grid {
+    display: flex;
+    gap: calc(0.25 * var(--su));
+    width: 100%;
+}
+
+.cg-col {
+    display: flex;
+    flex-direction: column;
+    gap: calc(0.25 * var(--su));
+    flex: 1;
+    min-width: 0;
+}
+
+.cg-month {
+    height: calc(1.3 * var(--su));
+    font-size: calc(1.4 * var(--su));
+    color: #fff;
+    margin-bottom: calc(0.4 * var(--su));
+}
+
+.cg-cell {
+    aspect-ratio: 1;
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: calc(0.15 * var(--su));
+}
+
+.cg-empty { visibility: hidden; }
+
+.cg-l0 {
+    background: #29362e;
+    border: 1px solid #2a3030;
+}
+.cg-l1 {
+    background: linear-gradient(160deg, #317a4a, #1e4e34);
+    border: 1px solid #1a4a2e;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.15);
+}
+.cg-l2 {
+    background: linear-gradient(160deg, #42aa68, #267044);
+    border: 1px solid #226840;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.15);
+}
+.cg-l3 {
+    background: linear-gradient(160deg, #56d484, #32965a);
+    border: 1px solid #30905a;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.15);
+}
+.cg-l4 {
+    background: linear-gradient(160deg, #f0b030, #b87000);
+    border: 1px solid #9c5c00;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.15), 0 0 4px rgba(217,119,6,0.2);
+}
+
+/* ── Notecard cutout text (slide 2) ─────────────────────────────────────── */
+
+.nc-sizer {
+    position: relative;
+}
+
+.notecard-text {
+    display: inline-block;
+    position: relative;
+    isolation: isolate;
+    padding: calc(0.6 * var(--su)) calc(1.8 * var(--su));
+    color: #111;
+    clip-path: polygon(0 0, 0 0, 0 0, 0 0);
+    transform: rotate(var(--nc-el-rot, 0deg));
+}
+
+.notecard-text::before {
+    content: '';
+    position: absolute;
+    inset: calc(-4.5 * var(--su));
+    background-image: url('/static/imag/NoteCard.svg');
+    background-size: auto calc(20 * var(--su));
+    background-position: var(--nc-bg-x, 20%) var(--nc-bg-y, 40%);
+    transform: rotate(var(--nc-rot, 0deg));
+    transform-origin: center;
+    z-index: -1;
+    pointer-events: none;
+    background-repeat: repeat;
+}
+
+.notecard-text .val-primary  { color: #9c6a00; }
+.notecard-text .val-secondary { color: #1a6b3c; }
+
+.bare-reveal-text {
+    display: inline-block;
+    position: relative;
+    padding: calc(0.6 * var(--su)) 0;
+    color: #fff;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.5);
+}
+
+@media (max-aspect-ratio: 3/5) {
+    :root {
+        --su: calc(0.6dvw + 0.7dvh);
+    }
 }

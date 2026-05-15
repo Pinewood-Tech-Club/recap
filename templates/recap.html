@@ -12,7 +12,7 @@
   <body>
     <div class="recap-bg">
       <div>
-        <p>Not in recap container</p>
+        <!-- <p>Not in recap container</p> -->
       </div>
     </div>
     <div class="recap-container">
@@ -26,14 +26,42 @@
           </div>
         </div>
         <div class="slide-base" id="slide2" style="display: none">
-          <p>You completed</p>
-          <h1><placeholder data-var="total_assignments"></placeholder></h1>
-          <p>assignments this semester.</p>
-          <p>Your busiest month was <b><placeholder data-var="busiest_month"></placeholder></b> during which you completed <b><placeholder data-var="busiest_month_count"></placeholder></b> assignments.</p>
-          <div class="gh-contr-graph"></div>
+          <div class="s2cont">
+            <div>
+              <div class="nc-sizer"><p class="for2subtxt bare-reveal-text" id="s2-p-completed"><span id="s2-you-completed"></span></p></div>
+              <div class="s2-count-container">
+                <div class="s2-graph-paper-bg"></div>
+                <img class="s2-clip-full" src="{{ url_for('static', filename='imag/clip/clip_full.png') }}" alt="">
+                <h1 id="s2-count" style="visibility:hidden">0</h1>
+                <img class="s2-clip-top" src="{{ url_for('static', filename='imag/clip/clip_top.png') }}" alt="">
+              </div>
+              <div class="nc-sizer"><p class="for2subtxt bare-reveal-text" id="s2-p-assignments"><span id="s2-assignments-text"></span></p></div>
+            </div>
+          </div>
+        </div>
+        <div class="slide-base" id="slide3" style="display: none">
+          <div class="s2cont">
+            <div>
+              <div class="nc-sizer"><p class="for2stat2 bare-reveal-text" id="s2-p-month"><span id="s2-m-intro"></span><b class="val-primary" id="s2-month-name"></b><span id="s2-m-mid"></span><b class="val-secondary" id="s2-month-count"></b><span id="s2-m-outro"></span></p></div>
+              <div class="nc-sizer"><p class="for2stat2 bare-reveal-text" id="s2-p-day"><span id="s2-d-intro"></span><b class="val-primary" id="s2-day-name"></b><span id="s2-d-mid"></span><b class="val-secondary" id="s2-day-count"></b><span id="s2-d-outro"></span></p></div>
+              <div class="gh-contr-graph" id="s2-graph" style="opacity:0; transform: translateY(8vh);"></div>
+              <div class="gh-contr-graph-info" id="s2-graph-info">
+                <p>Click/tap/drag on graph to view more info about a day</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </body>
+  <script>
+    const RECAP_DATA = {
+      total_assignments: 85,
+      busiest_month: "January",
+      busiest_month_count: 34,
+      busiest_day: "1/21",
+      busiest_day_count: 11
+    };
+  </script>
   <script src="{{ url_for('static', filename='js/recap.js') }}"></script>
 </html>
