@@ -68,6 +68,7 @@ sock = Sock(app)
 
 # Config
 SCHOOLOGY_CONSUMER_KEY = os.environ.get("SCHOOLOGY_CONSUMER_KEY")
+print(SCHOOLOGY_CONSUMER_KEY)
 SCHOOLOGY_CONSUMER_SECRET = os.environ.get("SCHOOLOGY_CONSUMER_SECRET")
 SCHOOLOGY_DOMAIN = os.environ.get("SCHOOLOGY_DOMAIN", "https://app.schoology.com")
 SCHOOLOGY_API_DOMAIN = os.environ.get("SCHOOLOGY_API_DOMAIN", "https://api.schoology.com")
@@ -1194,6 +1195,33 @@ def build_recap(payload):
     return generate_share_images(slides, job_id)
 
 
+# In-memory store for mobile OAuth request tokens: request_token -> request_token_secret
+# Entries expire after 10 minutes; cleaned up lazily.
+_mobile_request_tokens: dict[str, tuple[str, float]] = {}
+_MOBILE_TOKEN_TTL = 600  # seconds
+
+
+def _store_mobile_request_token(request_token: str, request_token_secret: str):
+    import time
+    _mobile_request_tokens[request_token] = (request_token_secret, time.time())
+    # Lazy cleanup of expired entries
+    now = time.time()
+    expired = [k for k, (_, ts) in _mobile_request_tokens.items() if now - ts > _MOBILE_TOKEN_TTL]
+    for k in expired:
+        del _mobile_request_tokens[k]
+
+
+def _pop_mobile_request_token(request_token: str) -> str | None:
+    entry = _mobile_request_tokens.pop(request_token, None)
+    if entry is None:
+        return None
+    import time
+    secret, ts = entry
+    if time.time() - ts > _MOBILE_TOKEN_TTL:
+        return None
+    return secret
+
+
 # Routes --------------------------------------------------------------------
 @app.route("/")
 def index():
@@ -1214,7 +1242,8 @@ def auth_start():
     if not SCHOOLOGY_CONSUMER_KEY or not SCHOOLOGY_CONSUMER_SECRET:
         return "Missing Schoology API keys. Set SCHOOLOGY_CONSUMER_KEY/SECRET.", 500
 
-    callback_url = url_for("auth_callback", _external=True)
+    base_url = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+    callback_url = base_url + "/auth/callback"
     auth = schoolopy.Auth(
         SCHOOLOGY_CONSUMER_KEY,
         SCHOOLOGY_CONSUMER_SECRET,
@@ -1228,16 +1257,89 @@ def auth_start():
     return redirect(url)
 
 
+@app.route("/auth/mobile-start")
+def auth_mobile_start():
+    """
+    Mobile OAuth entry point. Uses the same registered HTTP callback URL as the
+    web flow — Schoology never sees a custom scheme. The server detects a mobile
+    flow when /auth/callback receives a token that was registered here, then
+    redirects to pinewoodrecap:// which ASWebAuthenticationSession intercepts.
+    """
+    if not SCHOOLOGY_CONSUMER_KEY or not SCHOOLOGY_CONSUMER_SECRET:
+        return jsonify({"error": "missing_keys"}), 500
+
+    base_url = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/") or request.host_url.rstrip("/")
+    callback_url = base_url + "/auth/callback"
+
+    auth = schoolopy.Auth(
+        SCHOOLOGY_CONSUMER_KEY,
+        SCHOOLOGY_CONSUMER_SECRET,
+        three_legged=True,
+        domain=SCHOOLOGY_DOMAIN,
+    )
+    auth_url = auth.request_authorization(callback_url=callback_url)
+    if auth.request_token and auth.request_token_secret:
+        _store_mobile_request_token(auth.request_token, auth.request_token_secret)
+    return jsonify({"auth_url": auth_url})
+
+
+# In-memory store for mobile session codes: code -> {email, access_token, access_token_secret}
+_mobile_session_codes: dict[str, tuple[dict, float]] = {}
+_MOBILE_CODE_TTL = 120  # seconds
+
+
+def _store_mobile_session_code(code: str, data: dict):
+    _mobile_session_codes[code] = (data, time.time())
+    now = time.time()
+    expired = [k for k, (_, ts) in _mobile_session_codes.items() if now - ts > _MOBILE_CODE_TTL]
+    for k in expired:
+        del _mobile_session_codes[k]
+
+
+def _pop_mobile_session_code(code: str) -> dict | None:
+    entry = _mobile_session_codes.pop(code, None)
+    if entry is None:
+        return None
+    data, ts = entry
+    if time.time() - ts > _MOBILE_CODE_TTL:
+        return None
+    return data
+
+
+@app.route("/auth/activate-code")
+def auth_activate_code():
+    """
+    Called by the WKWebView after ASWebAuthenticationSession returns the temp code.
+    Sets the Flask session (cookie) on the webview and redirects to /recap.
+    """
+    code = request.args.get("code")
+    if not code:
+        return redirect("/?error=missing_code")
+    data = _pop_mobile_session_code(code)
+    if not data:
+        return redirect("/?error=invalid_code")
+    session["email"] = data["email"]
+    session["access_token"] = data["access_token"]
+    session["access_token_secret"] = data["access_token_secret"]
+    return redirect("/recap")
+
+
 @app.route("/auth/callback")
 def auth_callback():
     oauth_token = request.args.get("oauth_token")
     if not oauth_token:
         return redirect(url_for("index", error="missing_oauth_token"))
 
-    req_token = session.pop("request_token", None)
-    req_secret = session.pop("request_token_secret", None)
-    if not req_token or oauth_token != req_token or not req_secret:
-        return redirect(url_for("index", error="missing_request_secret"))
+    # Detect mobile flow: request_token was registered via /auth/mobile-start
+    is_mobile = oauth_token in _mobile_request_tokens
+
+    if is_mobile:
+        req_secret = _pop_mobile_request_token(oauth_token)
+    else:
+        req_token = session.pop("request_token", None)
+        req_secret = session.pop("request_token_secret", None)
+        if not req_token or oauth_token != req_token or not req_secret:
+            return redirect(url_for("index", error="missing_request_secret"))
 
     auth = schoolopy.Auth(
         SCHOOLOGY_CONSUMER_KEY,
@@ -1267,12 +1369,22 @@ def auth_callback():
     me = sc.get_me()
     email = getattr(me, "primary_email", None)
 
-    # Store email and tokens in session
+    if is_mobile:
+        # Store session data under a short-lived code; redirect to the custom
+        # scheme so ASWebAuthenticationSession intercepts it. The WKWebView will
+        # then load /auth/activate-code to get the real session cookie.
+        code = str(uuid.uuid4())
+        _store_mobile_session_code(code, {
+            "email": email,
+            "access_token": access_token,
+            "access_token_secret": access_token_secret,
+        })
+        return redirect(f"pinewoodrecap://auth/done?code={code}")
+
+    # Web flow: store directly in Flask session and redirect.
     session["email"] = email
     session["access_token"] = access_token
     session["access_token_secret"] = access_token_secret
-
-    # Redirect to /recap (no parameters)
     return redirect("/recap")
 
 

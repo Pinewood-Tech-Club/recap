@@ -1,0 +1,15 @@
+{
+  "role": [
+    {"id": 739931, "title": "System Admin",    "faculty": 1},
+    {"id": 782157, "title": "Course Creator",  "faculty": 1},
+    {"id": 739932, "title": "Administration",  "faculty": 1},
+    {"id": 739933, "title": "Student UC",      "faculty": 0},
+    {"id": 912530, "title": "Student MC",      "faculty": 0},
+    {"id": 739934, "title": "Parent",          "faculty": 0},
+    {"id": 740327, "title": "Faculty",         "faculty": 1},
+    {"id": 759170, "title": "Advisor",         "faculty": 1},
+    {"id": 770099, "title": "Summer Faculty",  "faculty": 1},
+    {"id": 770100, "title": "Summer Student",  "faculty": 0},
+    {"id": 819182, "title": "Student - P/F",   "faculty": 0}
+  ]
+}
