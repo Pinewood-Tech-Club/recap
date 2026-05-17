@@ -952,9 +952,30 @@ def generate_share_images(slides: dict, recap_id: str):
     return slides
 
 
-def _build_teacher_assignments(auth, sections, job_id):
-    """Build per-course grading event lists for teachers."""
+def _build_teacher_assignments(auth, sections, section_ids, job_id):
+    """Build per-course grading event lists for teachers, plus top 3 slowest-returned assignments."""
+    # Fetch assignment names + due dates for all sections
+    raw_assignments = _fetch_for_sections(auth, section_ids, "assignments", "assignment")
+    # assignment_id -> {title, due (epoch), course}
+    assignment_meta = {}
+    for section in sections:
+        course_title = getattr(section, "course_title", "Unknown Course")
+        for a in raw_assignments.get(str(section.id), []):
+            aid = str(a.get("id", ""))
+            if not aid:
+                continue
+            due_raw = a.get("due", None)
+            due_ts = None
+            if due_raw:
+                parsed = parse_dt(due_raw)
+                if parsed:
+                    due_ts = int(parsed.timestamp())
+            assignment_meta[aid] = {"title": a.get("title", "Unknown Assignment"), "due": due_ts, "course": course_title}
+
     course_list = []
+    # assignment_id -> max grade timestamp (for slowest-return calc)
+    assignment_last_graded = {}
+
     for section in sections:
         course_title = getattr(section, "course_title", "Unknown Course")
         notify_progress(job_id, {"status": "running", "stage": "grades", "course": course_title})
@@ -985,10 +1006,28 @@ def _build_teacher_assignments(auth, sections, job_id):
                     if ts <= 0:
                         continue
                     events.append({"t": ts})
+                    aid = str(g.get("assignment_id", ""))
+                    if aid:
+                        prev = assignment_last_graded.get(aid, 0)
+                        if ts > prev:
+                            assignment_last_graded[aid] = ts
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("grades fetch failed for section %s: %s", section.id, exc)
         course_list.append({"course": course_title, "data": events})
-    return course_list
+
+    # Compute top 3 slowest-returned assignments (last grade timestamp vs due date)
+    slow_entries = []
+    for aid, last_ts in assignment_last_graded.items():
+        meta = assignment_meta.get(aid)
+        if not meta or not meta.get("due"):
+            continue
+        days = (last_ts - meta["due"]) / 86400
+        if days > 0:
+            slow_entries.append({"assignment": meta["title"], "course": meta["course"], "days": round(days)})
+    slow_entries.sort(key=lambda x: x["days"], reverse=True)
+    top_slow_graded = slow_entries[:3]
+
+    return course_list, top_slow_graded
 
 
 def _build_student_assignments(auth, sections, assignments_by_section, latest_submissions, job_id):
@@ -1077,11 +1116,12 @@ def build_recap(payload):
     section_lookup = {s.id: s for s in sections}
 
     if is_teacher:
-        course_list = _build_teacher_assignments(auth, sections, job_id)
+        course_list, top_slow_graded = _build_teacher_assignments(auth, sections, section_ids, job_id)
         return {
             "mode": "teacher",
             "user_name": schoology_user["name"],
             "assignments": course_list,
+            "top_slow_graded": top_slow_graded,
         }
 
     # Batch-fetch enrollments for all sections

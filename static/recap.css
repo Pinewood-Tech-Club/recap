@@ -388,6 +388,17 @@ a {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.15), 0 0 4px rgba(217,119,6,0.2);
 }
 
+.cg-cell.cg-active {
+    outline: 2px solid rgba(255,255,255,0.75);
+    outline-offset: 1px;
+    filter: brightness(1.25);
+}
+
+.gh-contr-graph-info {
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
 /* ── Notecard cutout text (slide 2) ─────────────────────────────────────── */
 
 .nc-sizer {
@@ -427,6 +438,60 @@ a {
     padding: calc(0.6 * var(--su)) 0;
     color: #fff;
     text-shadow: 0 1px 6px rgba(0,0,0,0.5);
+}
+
+#s2-top3 {
+    margin-top: calc(2.5 * var(--su));
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: calc(1 * var(--su));
+}
+.s2-top3-item {
+    display: flex;
+    align-items: center;
+    gap: calc(1.4 * var(--su));
+    background-image: url('/static/imag/const_paper.webp');
+    background-color: #3a5c48;
+    background-blend-mode: multiply;
+    background-size: cover;
+    background-position: center;
+    padding: calc(1.2 * var(--su)) calc(1.6 * var(--su));
+    overflow: hidden;
+}
+.s2-top3-num {
+    font-size: calc(5 * var(--su));
+    font-weight: 700;
+    color: #f0b93a;
+    min-width: calc(5 * var(--su));
+    text-align: center;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.s2-top3-body {
+    flex: 1;
+    min-width: 0;
+}
+.s2-top3-label {
+    font-size: calc(2 * var(--su));
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+.s2-top3-meta {
+    font-size: calc(1.5 * var(--su));
+    color: #fff;
+    opacity: 0.55;
+    margin-top: calc(0.2 * var(--su));
+}
+.s2-top3-days {
+    font-size: calc(1.7 * var(--su));
+    font-weight: 700;
+    color: #3dd68c;
+    margin-top: calc(0.3 * var(--su));
 }
 
 @media (max-aspect-ratio: 3/5) {

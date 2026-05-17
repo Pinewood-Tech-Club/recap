@@ -1,4 +1,4 @@
-const slide_ids = ["slide1", "slide2", "slide3"]
+const slide_ids = ["slide1", "slide2", "slide3", "slide4"]
 var cur_slide = 0;
 let RECAP_DATA = null;
 let _dataReadyResolve;
@@ -62,9 +62,10 @@ document.addEventListener("keydown", (e) => {
 document.querySelector(".slides").addEventListener("click", forward);
 
 let _touch_start_x = null;
-document.addEventListener("touchstart", (e) => { _touch_start_x = e.touches[0].clientX; }, { passive: true });
+let _suppressSwipe = false;
+document.addEventListener("touchstart", (e) => { _touch_start_x = e.touches[0].clientX; _suppressSwipe = false; }, { passive: true, capture: true });
 document.addEventListener("touchend", (e) => {
-    if (_touch_start_x === null) return;
+    if (_touch_start_x === null || _suppressSwipe) { _touch_start_x = null; _suppressSwipe = false; return; }
     const dx = e.changedTouches[0].clientX - _touch_start_x;
     if (Math.abs(dx) > 40) dx < 0 ? forward() : backward();
     _touch_start_x = null;
@@ -183,7 +184,7 @@ function _cgFmt(d) {
  * Levels are computed from percentile thresholds of all non-zero days:
  *   0 = none, 1 = ≤p25, 2 = ≤p50, 3 = ≤p75, 4 = top 25%
  */
-function buildContribGraph(container, dailyCounts) {
+function buildContribGraph(container, dailyCounts, mode) {
     const START = new Date(2026, 0, 7);   // Jan  7 (Wed)
     const END   = new Date(2026, 4, 19);  // May 19 (Tue)
 
@@ -247,8 +248,11 @@ function buildContribGraph(container, dailyCounts) {
                 const key = _cgFmt(cd);
                 const v = dailyCounts[key] || 0;
                 const level = lvl(v);
+                const verb = mode === 'teacher' ? 'graded' : 'completed';
                 cell.className = `cg-cell cg-l${level}`;
-                cell.title = `${key}: ${v} assignment${v !== 1 ? 's' : ''} completed`;
+                cell.title = `${key}: ${v} assignment${v !== 1 ? 's' : ''} ${verb}`;
+                cell.dataset.date = key;
+                cell.dataset.count = String(v);
             }
             col.appendChild(cell);
         }
@@ -266,6 +270,17 @@ function epochToPSTDate(epochSec) {
 function epochToPSTHour(epochSec) {
     return parseInt(new Date(epochSec * 1000)
         .toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false }));
+}
+
+function formatDaysAfterDue(days) {
+    if (days < 2) return `Finished grading ${days} day after due`;
+    if (days < 7) return `Finished grading ${days} days after due`;
+    const weeks = Math.round(days / 7);
+    if (days < 30) return `Finished grading ~${weeks} week${weeks === 1 ? '' : 's'} after due`;
+    const months = Math.round(days / 30);
+    if (days < 365) return `Finished grading ~${months} month${months === 1 ? '' : 's'} after due`;
+    const years = Math.round(days / 365);
+    return `Finished grading ~${years} year${years === 1 ? '' : 's'} after due`;
 }
 
 const _MONTH_NAMES = ['January','February','March','April','May','June',
@@ -305,6 +320,15 @@ function computeRecapStats(raw) {
         busiest_day = `${m}/${d}`;
     }
 
+    const top_courses = raw.mode === 'student'
+        ? Object.entries(
+            (raw.assignments || []).reduce((acc, c) => {
+                acc[c.course] = (acc[c.course] || 0) + (c.data || []).length;
+                return acc;
+            }, {})
+          ).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([course, count]) => ({ course, count }))
+        : [];
+
     return {
         mode: raw.mode,
         user_name: raw.user_name,
@@ -314,6 +338,8 @@ function computeRecapStats(raw) {
         busiest_day,
         busiest_day_count,
         dailyCounts,
+        top_courses,
+        top_slow_graded: raw.top_slow_graded || [],
     };
 }
 
@@ -323,7 +349,10 @@ async function initRecapData() {
     RECAP_DATA = computeRecapStats(json.slides);
     _dataReadyResolve();
     const cgEl = document.getElementById('s2-graph');
-    if (cgEl) buildContribGraph(cgEl, RECAP_DATA.dailyCounts);
+    if (cgEl) {
+        buildContribGraph(cgEl, RECAP_DATA.dailyCounts, RECAP_DATA.mode);
+        attachGraphInteraction(cgEl, RECAP_DATA.mode);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -580,12 +609,15 @@ function reset_slide2() {
     _c.textContent = '0';
     _c.style.visibility = 'hidden';
     document.getElementById('s2-assignments-text').textContent = '';
+    document.getElementById('s2-top3-intro').textContent = '';
     const gpBg = document.querySelector('.s2-graph-paper-bg');
     if (gpBg) gpBg.style.opacity = '0';
     document.querySelector('.s2-clip-full').style.opacity = '0';
     document.querySelector('.s2-clip-top').style.opacity = '0';
     initGraphPaper();
     initPaperclip();
+    const top3 = document.getElementById('s2-top3');
+    if (top3) { top3.style.display = 'none'; top3.innerHTML = ''; }
 }
 
 function _reserveNotecardHeights(notecards) {
@@ -635,9 +667,128 @@ if (!alive()) { slide2Animating = false; return; }
     await delay(500, alive, snap);
 
     if (!alive()) { slide2Animating = false; return; }
-    await typewriter(document.getElementById('s2-assignments-text'), 'assignments this semester.', 35, null, alive, snap);
+    const assignText = d.mode === 'teacher' ? 'submissions this semester.' : 'assignments this semester.';
+    await typewriter(document.getElementById('s2-assignments-text'), assignText, 35, null, alive, snap);
+
+    if (!alive()) { slide2Animating = false; return; }
+    const listEl = document.getElementById('s2-top3');
+    if (listEl) {
+        const items = d.mode === 'teacher' ? d.top_slow_graded : d.top_courses;
+        if (items && items.length) {
+            const introText = d.mode === 'teacher'
+                ? 'The assignments that took you the longest to grade were:'
+                : 'The courses you had the most submissions in were:';
+            await typewriter(document.getElementById('s2-top3-intro'), introText, 20, null, alive, snap);
+
+            if (!alive()) { slide2Animating = false; return; }
+            const cards = items.map((item, i) => {
+                if (d.mode === 'teacher') {
+                    const daysLabel = formatDaysAfterDue(item.days);
+                    return `<div class="s2-top3-item" style="opacity:0;transform:translateX(-12px)">
+                        <div class="s2-top3-num">${i + 1}</div>
+                        <div class="s2-top3-body">
+                            <div class="s2-top3-label">${item.assignment}</div>
+                            <div class="s2-top3-meta">${item.course}</div>
+                            <div class="s2-top3-days">${daysLabel}</div>
+                        </div>
+                    </div>`;
+                } else {
+                    return `<div class="s2-top3-item" style="opacity:0;transform:translateX(-12px)">
+                        <div class="s2-top3-num">${i + 1}</div>
+                        <div class="s2-top3-body">
+                            <div class="s2-top3-label">${item.course}</div>
+                            <div class="s2-top3-days">${item.count} submissions</div>
+                        </div>
+                    </div>`;
+                }
+            }).join('');
+            listEl.innerHTML = cards;
+            listEl.style.display = 'flex';
+            await delay(150, alive, snap);
+
+            for (const el of listEl.querySelectorAll('.s2-top3-item')) {
+                if (!alive()) { slide2Animating = false; return; }
+                el.style.transition = 'opacity 0.45s ease, transform 0.45s ease';
+                el.style.opacity = '1';
+                el.style.transform = 'translateX(0)';
+                await delay(200, alive, snap);
+            }
+        }
+    }
 
     slide2Animating = false;
+}
+
+function attachGraphInteraction(container, mode) {
+    const verb = mode === 'teacher' ? 'graded' : 'completed';
+    let isDragging = false;
+    let activeCell = null;
+
+    function selectCell(cell) {
+        if (!cell || cell.classList.contains('cg-empty') || !cell.dataset.date) return;
+        if (activeCell) activeCell.classList.remove('cg-active');
+        activeCell = cell;
+        cell.classList.add('cg-active');
+        const count = parseInt(cell.dataset.count || '0');
+        const [y, m, d] = cell.dataset.date.split('-').map(Number);
+        const dateLabel = new Date(y, m - 1, d)
+            .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        const infoEl = document.getElementById('s2-graph-info');
+        infoEl.querySelector('p').textContent =
+            `${dateLabel}: ${count} assignment${count !== 1 ? 's' : ''} ${verb}`;
+    }
+
+    function cellFromPoint(x, y) {
+        const el = document.elementFromPoint(x, y);
+        if (el && el.classList.contains('cg-cell')) return el;
+        // If we landed in a gap, find the nearest cell within the container
+        if (!container.contains(el) && !container.getBoundingClientRect().width) return null;
+        const rect = container.getBoundingClientRect();
+        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+        let nearest = null, nearestDist = Infinity;
+        for (const cell of container.querySelectorAll('.cg-cell:not(.cg-empty)')) {
+            const r = cell.getBoundingClientRect();
+            const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            const d = (x - cx) ** 2 + (y - cy) ** 2;
+            if (d < nearestDist) { nearestDist = d; nearest = cell; }
+        }
+        return nearest;
+    }
+
+    container.addEventListener('click', (e) => { e.stopPropagation(); });
+
+    container.addEventListener('mousedown', (e) => {
+        const cell = e.target.closest('.cg-cell');
+        if (!cell) return;
+        e.preventDefault();
+        e.stopPropagation();
+        isDragging = true;
+        selectCell(cell);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        selectCell(cellFromPoint(e.clientX, e.clientY));
+    });
+
+    document.addEventListener('mouseup', () => { isDragging = false; });
+
+    container.addEventListener('touchstart', (e) => {
+        const t = e.touches[0];
+        const cell = cellFromPoint(t.clientX, t.clientY);
+        if (!cell) return;
+        _suppressSwipe = true;
+        isDragging = true;
+        selectCell(cell);
+    }, { passive: true });
+
+    container.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        const t = e.touches[0];
+        selectCell(cellFromPoint(t.clientX, t.clientY));
+    }, { passive: true });
+
+    container.addEventListener('touchend', () => { isDragging = false; }, { passive: true });
 }
 
 // ── Slide 3 ───────────────────────────────────────────────────────────────────
@@ -648,6 +799,10 @@ function reset_slide3() {
     graph.style.animation = 'none';
     graph.style.opacity = '0';
     graph.style.transform = 'translateY(8vh)';
+    const graphInfo = document.getElementById('s2-graph-info');
+    graphInfo.style.transition = '';
+    graphInfo.style.opacity = '0';
+    graphInfo.querySelector('p').textContent = 'Click/tap/drag on graph to view more info about a day';
     ['s2-m-intro','s2-month-name','s2-m-mid','s2-month-count','s2-m-outro',
      's2-d-intro','s2-day-name','s2-d-mid','s2-day-count','s2-d-outro'].forEach(id => {
         document.getElementById(id).textContent = '';
@@ -672,7 +827,7 @@ async function animate_slide3() {
     await delay(200, alive, snap);
 
     if (!alive()) { slide3Animating = false; return; }
-    await typewriter(document.getElementById('s2-m-mid'), ' during which you completed ', 35, null, alive, snap);
+    await typewriter(document.getElementById('s2-m-mid'), d.mode === 'teacher' ? ' during which you graded ' : ' during which you completed ', 35, null, alive, snap);
 
     if (!alive()) { slide3Animating = false; return; }
     countUp(document.getElementById('s2-month-count'), 0, d.busiest_month_count, 700, null, alive, snap);
@@ -687,7 +842,7 @@ async function animate_slide3() {
 
     if (!alive()) { slide3Animating = false; return; }
     scrollReveal(document.getElementById('s2-day-name'), dateCountUpOptions(d.busiest_day), d.busiest_day, 800, null, alive, snap);
-    await typewriter(document.getElementById('s2-d-mid'), ' on which you did ', 35, null, alive, snap);
+    await typewriter(document.getElementById('s2-d-mid'), d.mode === 'teacher' ? ' on which you graded ' : ' on which you did ', 35, null, alive, snap);
 
     if (!alive()) { slide3Animating = false; return; }
     countUp(document.getElementById('s2-day-count'), 0, d.busiest_day_count, 700, null, alive, snap);
@@ -703,7 +858,15 @@ async function animate_slide3() {
     void graph.offsetHeight;
     graph.style.animation = 'graph-rise 0.7s ease both';
     await delay(700, alive, snap);
-    if (snap()) { graph.style.animation = 'none'; graph.style.opacity = '1'; graph.style.transform = 'translateY(0)'; }
+    const graphInfo = document.getElementById('s2-graph-info');
+    if (snap()) {
+        graph.style.animation = 'none'; graph.style.opacity = '1'; graph.style.transform = 'translateY(0)';
+        graphInfo.style.transition = 'none';
+        graphInfo.style.opacity = '1';
+    }
+
+    if (!alive()) { slide3Animating = false; return; }
+    graphInfo.style.opacity = '1';
 
     slide3Animating = false;
 }
