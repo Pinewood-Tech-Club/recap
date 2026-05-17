@@ -4,10 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pinewood Recap</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='recap.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,100..900;1,100..900&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='recap.css') }}"
+    />
   </head>
   <body>
     <div class="recap-bg">
@@ -15,45 +21,103 @@
         <!-- <p>Not in recap container</p> -->
       </div>
     </div>
-    <div class="recap-container">
+    <div class="recap-container" style="display: none;">
+      <div class="slides">
+        <div class="slide-base" id="slide-gen">
+          <h1>Generating...</h1>
+        </div>
+      </div>
+    </div>
+    <div class="recap-container" style="">
       <div class="slides">
         <div class="slide-base" id="slide1">
           <div class="photos-album-selection-scroll"></div>
           <div class="slide-1-hero">
             <h1 id="txt-to-fade-in">Your Recap</h1>
-            <p>By the <a href="https://techclub.pw" target="_blank"><span class="txt-em cas-bounce">Pinewood Tech Club</span></a></p>
-            <p style="opacity: 1;" id="do-the-fade-in-thing">Click/tap to proceed, use arrow keys/swipe for navigation.</p>
+            <p>
+              By the
+              <a href="https://techclub.pw" target="_blank"
+                ><span class="txt-em cas-bounce">Pinewood Tech Club</span></a
+              >
+            </p>
+            <p style="opacity: 1" id="do-the-fade-in-thing">
+              Click/tap to proceed, use arrow keys/swipe for navigation.
+            </p>
           </div>
         </div>
         <div class="slide-base" id="slide2" style="display: none">
           <div class="s2cont">
             <div>
-              <div class="nc-sizer"><p class="for2subtxt bare-reveal-text" id="s2-p-completed"><span id="s2-you-completed"></span></p></div>
+              <div class="nc-sizer">
+                <p class="for2subtxt bare-reveal-text" id="s2-p-completed">
+                  <span id="s2-you-completed"></span>
+                </p>
+              </div>
               <div class="s2-count-container">
                 <div class="s2-graph-paper-bg"></div>
-                <img class="s2-clip-full" src="{{ url_for('static', filename='imag/clip/clip_full.png') }}" alt="">
-                <h1 id="s2-count" style="visibility:hidden">0</h1>
-                <img class="s2-clip-top" src="{{ url_for('static', filename='imag/clip/clip_top.png') }}" alt="">
+                <img
+                  class="s2-clip-full"
+                  src="{{ url_for('static', filename='imag/clip/clip_full.png') }}"
+                  alt=""
+                />
+                <h1 id="s2-count" style="visibility: hidden">0</h1>
+                <img
+                  class="s2-clip-top"
+                  src="{{ url_for('static', filename='imag/clip/clip_top.png') }}"
+                  alt=""
+                />
               </div>
-              <div class="nc-sizer"><p class="for2subtxt bare-reveal-text" id="s2-p-assignments"><span id="s2-assignments-text"></span></p></div>
-              <div class="nc-sizer"><p class="for2subtxt bare-reveal-text" id="s2-p-top3intro"><span id="s2-top3-intro"></span></p></div>
-              <div id="s2-top3" style="display:none"></div>
+              <div class="nc-sizer">
+                <p class="for2subtxt bare-reveal-text" id="s2-p-assignments">
+                  <span id="s2-assignments-text"></span>
+                </p>
+              </div>
+              <div class="nc-sizer">
+                <p
+                  class="for2subtxt bare-reveal-text"
+                  style="margin-top: 2rem"
+                  id="s2-p-top3intro"
+                >
+                  <span id="s2-top3-intro"></span>
+                </p>
+              </div>
+              <div id="s2-top3" style="display: none"></div>
             </div>
           </div>
         </div>
         <div class="slide-base" id="slide3" style="display: none">
           <div class="s2cont">
             <div>
-              <div class="nc-sizer"><p class="for2stat2 bare-reveal-text" id="s2-p-month"><span id="s2-m-intro"></span><b class="val-primary" id="s2-month-name"></b><span id="s2-m-mid"></span><b class="val-secondary" id="s2-month-count"></b><span id="s2-m-outro"></span></p></div>
-              <div class="nc-sizer"><p class="for2stat2 bare-reveal-text" id="s2-p-day"><span id="s2-d-intro"></span><b class="val-primary" id="s2-day-name"></b><span id="s2-d-mid"></span><b class="val-secondary" id="s2-day-count"></b><span id="s2-d-outro"></span></p></div>
-              <div class="gh-contr-graph" id="s2-graph" style="opacity:0; transform: translateY(8vh);"></div>
+              <div class="nc-sizer">
+                <p class="for2stat2 bare-reveal-text" id="s2-p-month">
+                  <span id="s2-m-intro"></span
+                  ><b class="val-primary" id="s2-month-name"></b
+                  ><span id="s2-m-mid"></span
+                  ><b class="val-secondary" id="s2-month-count"></b
+                  ><span id="s2-m-outro"></span>
+                </p>
+              </div>
+              <div class="nc-sizer">
+                <p class="for2stat2 bare-reveal-text" id="s2-p-day">
+                  <span id="s2-d-intro"></span
+                  ><b class="val-primary" id="s2-day-name"></b
+                  ><span id="s2-d-mid"></span
+                  ><b class="val-secondary" id="s2-day-count"></b
+                  ><span id="s2-d-outro"></span>
+                </p>
+              </div>
+              <div
+                class="gh-contr-graph"
+                id="s2-graph"
+                style="opacity: 0; transform: translateY(8vh)"
+              ></div>
               <div class="gh-contr-graph-info" id="s2-graph-info">
                 <p>Click/tap/drag on graph to view more info about a day</p>
               </div>
             </div>
           </div>
         </div>
-        <div id="slide4" class="slide-base" style="display: none;"></div>
+        <div id="slide4" class="slide-base" style="display: none"></div>
       </div>
     </div>
   </body>

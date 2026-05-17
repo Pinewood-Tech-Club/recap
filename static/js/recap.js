@@ -59,7 +59,7 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft"  || e.key === "ArrowUp")   backward();
 });
 
-document.querySelector(".slides").addEventListener("click", forward);
+document.addEventListener("click", (e) => { if (!e.target.closest("a")) forward(); });
 
 let _touch_start_x = null;
 let _suppressSwipe = false;
@@ -67,7 +67,7 @@ document.addEventListener("touchstart", (e) => { _touch_start_x = e.touches[0].c
 document.addEventListener("touchend", (e) => {
     if (_touch_start_x === null || _suppressSwipe) { _touch_start_x = null; _suppressSwipe = false; return; }
     const dx = e.changedTouches[0].clientX - _touch_start_x;
-    if (Math.abs(dx) > 40) dx < 0 ? forward() : backward();
+    if (Math.abs(dx) > 40) { dx < 0 ? forward() : backward(); }
     _touch_start_x = null;
 }, { passive: true });
 
@@ -205,9 +205,9 @@ function buildContribGraph(container, dailyCounts, mode) {
 
     const lvl = (v) => {
         if (v === 0) return 0;
-        if (v <= p33) return 1;
-        if (v <= p60) return 2;
-        if (v <= p90) return 3;
+        if (v < p33) return 1;
+        if (v < p60) return 2;
+        if (v < p90) return 3;
         return 4;
     };
 
@@ -286,6 +286,9 @@ function formatDaysAfterDue(days) {
 const _MONTH_NAMES = ['January','February','March','April','May','June',
                       'July','August','September','October','November','December'];
 
+const RANGE_START = '2026-01-07';
+const RANGE_END   = '2026-05-19';
+
 function computeRecapStats(raw) {
     const dailyCounts = {};
     const monthCounts = {};
@@ -293,8 +296,9 @@ function computeRecapStats(raw) {
     for (const course of raw.assignments || []) {
         for (const ev of course.data || []) {
             const t = ev.t;
-            total += 1;
             const dateKey = epochToPSTDate(t); // YYYY-MM-DD
+            if (dateKey < RANGE_START || dateKey > RANGE_END) continue;
+            total += 1;
             dailyCounts[dateKey] = (dailyCounts[dateKey] || 0) + 1;
             const monthIdx = parseInt(dateKey.slice(5, 7), 10) - 1;
             const monthName = _MONTH_NAMES[monthIdx];
@@ -323,7 +327,11 @@ function computeRecapStats(raw) {
     const top_courses = raw.mode === 'student'
         ? Object.entries(
             (raw.assignments || []).reduce((acc, c) => {
-                acc[c.course] = (acc[c.course] || 0) + (c.data || []).length;
+                const inRange = (c.data || []).filter(ev => {
+                    const dk = epochToPSTDate(ev.t);
+                    return dk >= RANGE_START && dk <= RANGE_END;
+                });
+                acc[c.course] = (acc[c.course] || 0) + inRange.length;
                 return acc;
             }, {})
           ).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([course, count]) => ({ course, count }))
@@ -899,7 +907,7 @@ if (slide_on_enter[slide_ids[cur_slide]]) slide_on_enter[slide_ids[cur_slide]]()
     const container = document.querySelector('.photos-album-selection-scroll');
     if (!container) return;
 
-    const res = await fetch('https://photos.recap.pinewood.one/selection/mailey_wang.json');
+    const res = await fetch('https://photos.recap.pinewood.one/selection/adam_xu.json');
     const { photos } = await res.json();
 
     for (let i = photos.length - 1; i > 0; i--) {
