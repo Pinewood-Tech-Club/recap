@@ -83,6 +83,10 @@ subscribers: dict[str, list[queue.Queue]] = {}
 if not SCHOOLOGY_CONSUMER_KEY or not SCHOOLOGY_CONSUMER_SECRET:
     logger.warning("Schoology consumer key/secret missing; OAuth will fail.")
 
+with open(os.path.join(os.path.dirname(__file__), "pinewood_roles.json")) as f:
+    _role_data = json.load(f)
+FACULTY_ROLE_IDS = {r["id"] for r in _role_data["role"] if r["faculty"] == 1}
+
 # Initialize databases ---------------------------------------------------
 def init_recap_db():
     """Initialize both recaps (permanent) and jobs (temporary queue) tables."""
@@ -948,6 +952,72 @@ def generate_share_images(slides: dict, recap_id: str):
     return slides
 
 
+def _build_teacher_assignments(auth, sections, job_id):
+    """Build per-course grading event lists for teachers."""
+    course_list = []
+    for section in sections:
+        course_title = getattr(section, "course_title", "Unknown Course")
+        notify_progress(job_id, {"status": "running", "stage": "grades", "course": course_title})
+        events = []
+        try:
+            url = f"{SCHOOLOGY_API_DOMAIN}/v1/sections/{section.id}/grades"
+            resp = auth.oauth.get(url, timeout=30)
+            if resp.status_code == 200:
+                data = resp.json() or {}
+                grades = data.get("grades", {})
+                if isinstance(grades, dict):
+                    grades = grades.get("grade", [])
+                if isinstance(grades, dict):
+                    grades = [grades]
+                for g in grades or []:
+                    if g.get("grade") is None:
+                        continue
+                    exception = g.get("exception")
+                    try:
+                        if exception is not None and int(exception) in (2, 3):
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+                    try:
+                        ts = int(g.get("timestamp", 0))
+                    except (TypeError, ValueError):
+                        continue
+                    if ts <= 0:
+                        continue
+                    events.append({"t": ts})
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("grades fetch failed for section %s: %s", section.id, exc)
+        course_list.append({"course": course_title, "data": events})
+    return course_list
+
+
+def _build_student_assignments(auth, sections, assignments_by_section, latest_submissions, job_id):
+    """Build per-course submission event lists for students."""
+    course_list = []
+    for section in sections:
+        course_title = getattr(section, "course_title", "Unknown Course")
+        events = []
+        for a in assignments_by_section.get(section.id, []):
+            sub = latest_submissions.get(str(a.id))
+            if not sub:
+                continue
+            raw = getattr(sub, "submitted", None) or getattr(sub, "created", None)
+            ts = None
+            if isinstance(raw, (int, float)):
+                ts = int(raw)
+            elif isinstance(raw, str) and raw.isdigit():
+                ts = int(raw)
+            else:
+                parsed = parse_dt(raw)
+                if parsed:
+                    ts = int(parsed.replace(tzinfo=None).timestamp())
+            if ts is None or ts <= 0:
+                continue
+            events.append({"t": ts})
+        course_list.append({"course": course_title, "data": events})
+    return course_list
+
+
 def build_recap(payload):
     """
     Fetch Schoology data and compute recap slides.
@@ -957,15 +1027,14 @@ def build_recap(payload):
     access_token = payload["access_token"]
     access_token_secret = payload["access_token_secret"]
     user_email = payload.get("email")
-
     sc, auth = create_schoology_client(access_token, access_token_secret, two_legged=payload.get("two_legged", False))
 
     # Determine user_id robustly; allow debug override
     me = None
     try:
         me = sc.get_me()
-    except Exception:
-        me = None
+    except Exception as _exc:
+        logger.warning("get_me() failed: %s", _exc)
     user_id = getattr(me, "uid", None) if me else None
     profile_data = fetch_user_profile(auth, user_id)
     avatar_source_url = (
@@ -986,6 +1055,8 @@ def build_recap(payload):
     }
     notify_progress(job_id, {"status": "running", "stage": "me", "user_id": user_id})
 
+    is_teacher = (getattr(me, "role_id", None) in FACULTY_ROLE_IDS) if me else False
+
     # Data buckets
     sections_raw = []
     if user_id:
@@ -1004,6 +1075,14 @@ def build_recap(payload):
 
     section_ids = [s.id for s in sections]
     section_lookup = {s.id: s for s in sections}
+
+    if is_teacher:
+        course_list = _build_teacher_assignments(auth, sections, job_id)
+        return {
+            "mode": "teacher",
+            "user_name": schoology_user["name"],
+            "assignments": course_list,
+        }
 
     # Batch-fetch enrollments for all sections
     notify_progress(job_id, {"status": "running", "stage": "enrollments"})
@@ -1052,147 +1131,13 @@ def build_recap(payload):
         if obj is not None
     }
     logger.info("latest_submissions: %d entries", len(latest_submissions))
-    now = datetime.utcnow()
 
-    assignment_lookup = {}
-    for assigns in assignments_by_section.values():
-        for a in assigns:
-            assignment_lookup[str(a.id)] = a
-
-    # Metrics ---------------------------------------------------------------
-    # Busiest month
-    month_counts = defaultdict(int)
-    for assigns in assignments_by_section.values():
-        for a in assigns:
-            due = parse_dt(getattr(a, "due", None))
-            if due:
-                month_counts[due.strftime("%B")] += 1
-
-    busiest_month = None
-    if month_counts:
-        busiest_month = max(month_counts.items(), key=lambda x: x[1])
-
-    # Course with most assignments
-    course_assignment_counts = {}
-    for section in sections:
-        course_assignment_counts[section.id] = len(assignments_by_section.get(section.id, []))
-    top_assignment_course = None
-    if course_assignment_counts:
-        top_assignment_course = max(course_assignment_counts.items(), key=lambda x: x[1])
-
-    # Weekend / Weekday / Night owl
-    weekend_subs = weekday_subs = night_owl_subs = 0
-    for sub in latest_submissions.values():
-        submitted = parse_dt(getattr(sub, "submitted", None)) or parse_dt(getattr(sub, "created", None))
-        if not submitted:
-            continue
-        if submitted.weekday() >= 5:
-            weekend_subs += 1
-        else:
-            weekday_subs += 1
-        if submitted.hour >= 22 or submitted.hour < 6:
-            night_owl_subs += 1
-
-    total_subs = weekend_subs + weekday_subs or 1
-    night_pct = round((night_owl_subs / total_subs) * 100, 1)
-
-    # Procrastination metrics (debug script aligned)
-    deltas = []
-    early_birds = 0
-    late_submissions = 0
-    on_time_flags = []
-    for sub in latest_submissions.values():
-        assignment = assignment_lookup.get(str(getattr(sub, "_assignment_id", "")))
-        due = parse_dt(getattr(assignment, "due", None)) if assignment else None
-        submitted = parse_dt(getattr(sub, "submitted", None)) or parse_dt(getattr(sub, "created", None))
-        if not submitted:
-            continue
-
-        is_late_flag = bool(getattr(sub, "late", False))
-        is_late = (submitted and due and submitted > due) or is_late_flag
-        is_on_time = not is_late
-        on_time_flags.append(is_on_time)
-
-        if is_late:
-            # Late work counts as zero hours early for average procrastination
-            deltas.append(timedelta())
-            late_submissions += 1
-            continue
-
-        if due:
-            delta = due - submitted
-            deltas.append(delta)
-            if delta >= timedelta(hours=48):
-                early_birds += 1
-
-    avg_procrastination = None
-    if deltas:
-        avg_procrastination = sum(deltas, timedelta()) / len(deltas)
-
-    # Classroom constants (top classmates by shared sections)
-    classmate_counts = defaultdict(lambda: {"count": 0, "sections": set(), "name": ""})
-    for section in sections:
-        enrolls = section_enrollments.get(section.id, [])
-        for enr in enrolls:
-            if str(getattr(enr, "uid", "")) == str(user_id):
-                continue
-            classmate_counts[enr.uid]["count"] += 1
-            classmate_counts[enr.uid]["sections"].add(f'{getattr(section, "course_title", "")}: {getattr(section, "section_title", "")}')
-            classmate_counts[enr.uid]["name"] = getattr(enr, "name_display", f"User {enr.uid}")
-
-    top_classmates = sorted(classmate_counts.items(), key=lambda x: x[1]["count"], reverse=True)[:5]
-
-    # Helper function for formatting time deltas
-    def format_delta(td: timedelta):
-        total_hours = td.total_seconds() / 3600
-        return f"{total_hours:.1f}"
-
-    # Calculate total assignments
-    total_assignments = sum(len(assigns) for assigns in assignments_by_section.values())
-
-    # Return computed variables for frontend to use with recap-style.json
-    slides = {
-        # Basic counts
-        "total_assignments": total_assignments,
-        "total_courses": len(sections),
-        "course_count": len(sections),
-        "user_name": schoology_user.get("name", ""),
-        "user_avatar": schoology_user.get("avatar", ""),
-        "user_email": schoology_user.get("email", ""),
-
-        # Busiest month
-        "busiest_month": busiest_month[0] if busiest_month else "",
-        "assignments_bm": busiest_month[1] if busiest_month else 0,
-
-        # Submission timing
-        "weekend_subs": weekend_subs,
-        "weekday_subs": weekday_subs,
-        "night_owl_subs": night_owl_subs,
-        "night_owl_pct": night_pct,
-
-        # Procrastination metrics
-        "avg_procrastination": format_delta(avg_procrastination) if avg_procrastination else "0",
-        "early_birds": early_birds,
-        "early_bird_pct": round((early_birds / (len(latest_submissions) or 1)) * 100, 1),
-        "late_submissions": late_submissions,
-        "late_pct": round((late_submissions / (len(latest_submissions) or 1)) * 100, 1),
-
-        # Top courses
-        "top_assignment_course": getattr(section_lookup.get(top_assignment_course[0]), "course_title", "") if top_assignment_course else "",
-        "top_assignment_count": top_assignment_course[1] if top_assignment_course else 0,
-
-        # Top classmates
-        "top_classmates": [
-            {
-                "name": c["name"],
-                "count": c["count"],
-                "sections": list(c["sections"]),
-            }
-            for _, c in top_classmates
-        ],
+    course_list = _build_student_assignments(auth, sections, assignments_by_section, latest_submissions, job_id)
+    return {
+        "mode": "student",
+        "user_name": schoology_user["name"],
+        "assignments": course_list,
     }
-    # Generate shareable images
-    return generate_share_images(slides, job_id)
 
 
 # In-memory store for mobile OAuth request tokens: request_token -> request_token_secret
@@ -1457,15 +1402,6 @@ def get_recap_api(recap_id):
     recap = get_recap_by_id(recap_id)
     if not recap:
         return jsonify({"error": "not_found"}), 404
-    slides = recap.get("slides") or {}
-    grid_rel = (slides.get("share_images") or {}).get("grid")
-    grid_abs = None
-    if grid_rel and grid_rel.startswith("/"):
-        grid_abs = os.path.join(app.root_path, grid_rel.lstrip("/"))
-    if not grid_rel or not grid_abs or not os.path.exists(grid_abs):
-        slides = generate_share_images(slides, recap_id)
-        recap["slides"] = slides
-        update_recap_slides(recap_id, slides)
     return jsonify(recap)
 
 

@@ -55,13 +55,8 @@
     </div>
   </body>
   <script>
-    const RECAP_DATA = {
-      total_assignments: 85,
-      busiest_month: "January",
-      busiest_month_count: 34,
-      busiest_day: "1/21",
-      busiest_day_count: 11
-    };
+    const RECAP_ID = {{ recap_id | tojson }};
+    const IS_GENERATING = {{ is_generating | tojson }};
   </script>
   <script src="{{ url_for('static', filename='js/recap.js') }}"></script>
 </html>

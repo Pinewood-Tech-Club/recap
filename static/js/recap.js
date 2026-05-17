@@ -1,5 +1,8 @@
 const slide_ids = ["slide1", "slide2", "slide3"]
 var cur_slide = 0;
+let RECAP_DATA = null;
+let _dataReadyResolve;
+const dataReady = new Promise(r => { _dataReadyResolve = r; });
 let slide1Snap = false;
 let slide1Animating = false;
 let _slide1Timeouts = [];
@@ -256,30 +259,72 @@ function buildContribGraph(container, dailyCounts) {
     container.appendChild(grid);
 }
 
-// Replace this with real data from the recap API
-function _mockDailyCounts() {
-    const counts = {};
-    let seed = 7391;
-    const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 0x100000000; };
-
-    const start = new Date(2026, 0, 7);
-    const end   = new Date(2026, 4, 19);
-
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-        const mon = d.getMonth();
-        let base = isWeekend ? 0.8 : 2.5;
-        if (mon === 1) base *= 1.3;              // Feb midterms
-        if (mon === 3 || mon === 4) base *= 1.6; // Apr/May finals
-
-        const v = rand() > 0.30 ? Math.round(base * (0.5 + rand() * 1.5)) : 0;
-        if (v > 0) counts[_cgFmt(d)] = v;
-    }
-    return counts;
+function epochToPSTDate(epochSec) {
+    return new Date(epochSec * 1000)
+        .toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+}
+function epochToPSTHour(epochSec) {
+    return parseInt(new Date(epochSec * 1000)
+        .toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false }));
 }
 
-const _cgEl = document.getElementById('s2-graph');
-if (_cgEl) buildContribGraph(_cgEl, _mockDailyCounts());
+const _MONTH_NAMES = ['January','February','March','April','May','June',
+                      'July','August','September','October','November','December'];
+
+function computeRecapStats(raw) {
+    const dailyCounts = {};
+    const monthCounts = {};
+    let total = 0;
+    for (const course of raw.assignments || []) {
+        for (const ev of course.data || []) {
+            const t = ev.t;
+            total += 1;
+            const dateKey = epochToPSTDate(t); // YYYY-MM-DD
+            dailyCounts[dateKey] = (dailyCounts[dateKey] || 0) + 1;
+            const monthIdx = parseInt(dateKey.slice(5, 7), 10) - 1;
+            const monthName = _MONTH_NAMES[monthIdx];
+            monthCounts[monthName] = (monthCounts[monthName] || 0) + 1;
+        }
+    }
+
+    let busiest_month = '';
+    let busiest_month_count = 0;
+    for (const [m, c] of Object.entries(monthCounts)) {
+        if (c > busiest_month_count) { busiest_month = m; busiest_month_count = c; }
+    }
+
+    let busiest_day_key = '';
+    let busiest_day_count = 0;
+    for (const [d, c] of Object.entries(dailyCounts)) {
+        if (c > busiest_day_count) { busiest_day_key = d; busiest_day_count = c; }
+    }
+    let busiest_day = '';
+    if (busiest_day_key) {
+        const m = parseInt(busiest_day_key.slice(5, 7), 10);
+        const d = parseInt(busiest_day_key.slice(8, 10), 10);
+        busiest_day = `${m}/${d}`;
+    }
+
+    return {
+        mode: raw.mode,
+        user_name: raw.user_name,
+        total_assignments: total,
+        busiest_month,
+        busiest_month_count,
+        busiest_day,
+        busiest_day_count,
+        dailyCounts,
+    };
+}
+
+async function initRecapData() {
+    const resp = await fetch(`/api/recap/${RECAP_ID}`);
+    const json = await resp.json();
+    RECAP_DATA = computeRecapStats(json.slides);
+    _dataReadyResolve();
+    const cgEl = document.getElementById('s2-graph');
+    if (cgEl) buildContribGraph(cgEl, RECAP_DATA.dailyCounts);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Slide animation utilities
@@ -566,12 +611,15 @@ async function animate_slide2() {
     slide2Animating = true;
     slide2Snap = false;
     const myGen = slide2Gen;
+    if (!RECAP_DATA) await dataReady;
+    if (slide2Gen !== myGen) { slide2Animating = false; return; }
     const d = RECAP_DATA;
     const snap = () => slide2Snap;
     const alive = () => slide2Gen === myGen;
 
 if (!alive()) { slide2Animating = false; return; }
-    await typewriter(document.getElementById('s2-you-completed'), 'You completed', 40, null, alive, snap);
+    const verb = d.mode === 'teacher' ? 'You graded' : 'You completed';
+    await typewriter(document.getElementById('s2-you-completed'), verb, 40, null, alive, snap);
 
     if (!alive()) { slide2Animating = false; return; }
     const countEl = document.getElementById('s2-count');
@@ -610,6 +658,8 @@ async function animate_slide3() {
     slide3Animating = true;
     slide3Snap = false;
     const myGen = slide3Gen;
+    if (!RECAP_DATA) await dataReady;
+    if (slide3Gen !== myGen) { slide3Animating = false; return; }
     const d = RECAP_DATA;
     const snap = () => slide3Snap;
     const alive = () => slide3Gen === myGen;
@@ -659,6 +709,20 @@ async function animate_slide3() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+if (IS_GENERATING) {
+    let _dataFetched = false;
+    const _fetchOnce = () => { if (!_dataFetched) { _dataFetched = true; initRecapData(); } };
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/job/${RECAP_ID}`);
+    ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.status === 'done') { ws.close(); _fetchOnce(); }
+    };
+    ws.onerror = () => _fetchOnce();
+    ws.onclose = () => _fetchOnce();
+} else {
+    initRecapData();
+}
 
 const hash_index = slide_ids.indexOf(location.hash.slice(1));
 const start_index = hash_index >= 0 ? hash_index : 0;
