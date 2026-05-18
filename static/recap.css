@@ -5,6 +5,7 @@
 
 :root {
     --su: 1vh;
+    --ios-notch-offset: 0rem;
 }
 
 body {
@@ -42,6 +43,13 @@ body {
         transform: none;
         border-radius: 0;
         padding-bottom: env(safe-area-inset-bottom);
+    }
+}
+
+@media (max-aspect-ratio: 3/5) {
+    .slide-base {
+        padding-top: var(--ios-notch-offset);
+        box-sizing: border-box;
     }
 }
 

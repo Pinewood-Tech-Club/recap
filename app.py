@@ -1306,7 +1306,8 @@ def auth_activate_code():
     session["email"] = data["email"]
     session["access_token"] = data["access_token"]
     session["access_token_secret"] = data["access_token_secret"]
-    return redirect("/recap")
+    dest = "/recap?iosapp=1" if request.args.get("iosapp") == "1" else "/recap"
+    return redirect(dest)
 
 
 @app.route("/auth/callback")

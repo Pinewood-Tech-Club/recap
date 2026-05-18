@@ -14,6 +14,11 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='recap.css') }}"
     />
+    <script>
+      if (new URLSearchParams(location.search).get("iosapp") === "1") {
+        document.documentElement.style.setProperty("--ios-notch-offset", "1.5rem");
+      }
+    </script>
   </head>
   <body>
     <div class="recap-bg">
