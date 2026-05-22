@@ -1019,24 +1019,22 @@ _updateDownloadBtn();
     const res = await fetch('/photos/selection/26mwang.json');
     const { photos } = await res.json();
 
-    // Full shuffle
     for (let i = photos.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [photos[i], photos[j]] = [photos[j], photos[i]];
     }
 
-    const isIosApp = document.documentElement.classList.contains('iosapp');
-    const isLandscape = window.innerWidth / window.innerHeight > 9 / 16;
-    const useThreeCols = isIosApp && isLandscape;
+    function shouldUseThreeCols() {
+        return document.documentElement.classList.contains('iosapp') &&
+               window.innerWidth > window.innerHeight;
+    }
 
-    // Build a scroll track for a given photo group, width, and left offset (percent)
     function buildTrack(photoGroup, widthPct, leftPct) {
         const track = document.createElement('div');
         track.className = 'scroll-track';
         track.style.width = `${widthPct}%`;
         track.style.left = `${leftPct}%`;
         container.appendChild(track);
-        // Double the group for seamless looping
         [...photoGroup, ...photoGroup].forEach(photo => {
             const wrap = document.createElement('div');
             wrap.className = 'photo-wrap';
@@ -1047,66 +1045,78 @@ _updateDownloadBtn();
             wrap.appendChild(img);
             track.appendChild(wrap);
         });
-        track.querySelectorAll('.photo-wrap').forEach((wrap, i) => {
-            const sign = i % 2 === 0 ? 1 : -1;
-            wrap.style.transform = `rotate(${(sign * (Math.random() * 10 + 5)).toFixed(1)}deg)`;
-        });
         return track;
     }
 
-    container.style.setProperty('--crinkle-rot', `${Math.random() * 360}deg`);
-    container.style.setProperty('--crinkle-x', `${Math.random() * 100}%`);
-    container.style.setProperty('--crinkle-y', `${Math.random() * 100}%`);
-
-    // Tracks: [{track, y, speed}]
-    const trackStates = [];
-
-    if (useThreeCols) {
-        // Split photos into 3 groups; re-shuffle each so columns look different
-        const n = photos.length;
-        const t = Math.ceil(n / 3);
-        const groups = [photos.slice(0, t), photos.slice(t, t * 2), photos.slice(t * 2)];
-        groups.forEach(g => {
-            for (let i = g.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [g[i], g[j]] = [g[j], g[i]];
-            }
-        });
-        // Three columns: 30% wide each, evenly spaced with equal margins
-        const colW = 30, gap = (100 - colW * 3) / 4;
-        const speeds = [130, 95, 160];
-        const startYs = [0, 120, 60]; // stagger so they're not in sync
-        groups.forEach((g, i) => {
-            const track = buildTrack(g, colW, gap + i * (colW + gap));
-            trackStates.push({ track, y: startYs[i], speed: speeds[i] });
-        });
-    } else {
-        const track = buildTrack(photos, 67, 16.5);
-        trackStates.push({ track, y: 0, speed: 150 });
+    function applyCrinkle() {
+        container.style.setProperty('--crinkle-rot', `${Math.random() * 360}deg`);
+        container.style.setProperty('--crinkle-x', `${Math.random() * 100}%`);
+        container.style.setProperty('--crinkle-y', `${Math.random() * 100}%`);
     }
 
-    let lastTime = null;
-    let lastCrinkle = 0;
+    let intervalId = null;
+    let activeMode = null;
 
-    function scrollStep(ts) {
-        const dt = lastTime !== null ? (ts - lastTime) / 1000 : 0;
-        lastTime = ts;
+    function startLayout() {
+        if (intervalId !== null) { clearInterval(intervalId); intervalId = null; }
+        container.querySelectorAll('.scroll-track').forEach(t => t.remove());
 
-        if (ts - lastCrinkle > 800) {
-            container.style.setProperty('--crinkle-rot', `${Math.random() * 360}deg`);
-            container.style.setProperty('--crinkle-x', `${Math.random() * 100}%`);
-            container.style.setProperty('--crinkle-y', `${Math.random() * 100}%`);
-            lastCrinkle = ts;
+        const useThreeCols = shouldUseThreeCols();
+        activeMode = useThreeCols ? 'three' : 'single';
+
+        const tracks = [];
+
+        if (useThreeCols) {
+            const n = photos.length;
+            const t = Math.ceil(n / 3);
+            const groups = [photos.slice(0, t), photos.slice(t, t * 2), photos.slice(t * 2)];
+            groups.forEach(g => {
+                for (let i = g.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [g[i], g[j]] = [g[j], g[i]];
+                }
+            });
+            const colW = 32, centers = [10, 50, 90];
+            const stepFactors = [1.0, 0.65, 1.1];
+            groups.forEach((g, i) => {
+                tracks.push({ track: buildTrack(g, colW, centers[i] - colW / 2), y: 0, stepFactor: stepFactors[i] });
+            });
+        } else {
+            tracks.push({ track: buildTrack(photos, 67, 16.5), y: 0, stepFactor: 1.0 });
         }
 
-        for (const state of trackStates) {
-            state.y += state.speed * dt;
-            const half = state.track.scrollHeight / 2;
-            if (half > 0 && state.y >= half) state.y -= half;
-            state.track.style.transform = `translateY(-${state.y}px)`;
+        const step = container.offsetHeight * 0.2;
+        let flip = 1;
+
+        function applyRotations() {
+            tracks.forEach(({ track }) => {
+                track.querySelectorAll('.photo-wrap').forEach((wrap, i) => {
+                    const sign = (i % 2 === 0 ? 1 : -1) * flip;
+                    wrap.style.transform = `rotate(${sign * (Math.random() * 10 + 5)}deg)`;
+                });
+            });
         }
 
-        requestAnimationFrame(scrollStep);
+        applyCrinkle();
+        applyRotations();
+
+        intervalId = setInterval(() => {
+            tracks.forEach(state => {
+                state.y += step * state.stepFactor;
+                const half = state.track.scrollHeight / 2;
+                if (half > 0 && state.y >= half) state.y = 0;
+                state.track.style.transform = `translateY(-${state.y}px)`;
+            });
+            flip *= -1;
+            applyRotations();
+            applyCrinkle();
+        }, 800);
     }
-    requestAnimationFrame(scrollStep);
+
+    startLayout();
+
+    window.addEventListener('resize', () => {
+        const newMode = shouldUseThreeCols() ? 'three' : 'single';
+        if (newMode !== activeMode) startLayout();
+    });
 })();

@@ -14,23 +14,41 @@ interface CategoriesData {
   counts: Record<string, number>
 }
 
+const FACE_SCORE_THRESHOLD = 0.45
+
 export default function App() {
   const [allPhotos, setAllPhotos] = useState<Photo[]>([])
   const [categories, setCategories] = useState<CategoryNode[]>([])
-  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({})
   const [people, setPeople] = useState<Person[]>([])
   const [personSlugs, setPersonSlugs] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
 
-  // Filters
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set())
-  const [sources, setSources] = useState<Set<string>>(new Set(['smugmug', 'yearbook', 'robotics']))
   const [person, setPerson] = useState<string>('')
 
-  // Lightbox
   const [lightboxIdx, setLightboxIdx] = useState<number>(-1)
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false)
 
-  // Precompute personSlugsSet for sidebar
+  const slugToName = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {}
+    function walk(nodes: CategoryNode[]) {
+      for (const n of nodes) {
+        map[n.slug] = n.name
+        if (n.subcategories) walk(n.subcategories)
+      }
+    }
+    walk(categories)
+    return map
+  }, [categories])
+
+  const nameToDisplay = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {}
+    for (const p of people) {
+      if (p.display_name) map[p.name] = p.display_name
+    }
+    return map
+  }, [people])
+
   const personSlugsSet = useMemo<Map<string, Set<string>>>(() => {
     const map = new Map<string, Set<string>>()
     for (const [name, slugList] of Object.entries(personSlugs)) {
@@ -48,57 +66,44 @@ export default function App() {
     ]).then(([photos, cats, ppl]: [Photo[], CategoriesData, PeopleData]) => {
       setAllPhotos(photos)
       setCategories(cats.tree)
-      setCategoryCounts(cats.counts)
       setPeople(ppl.people)
       setPersonSlugs(ppl.slugs)
       setLoading(false)
-    }).catch(err => {
-      console.error('Failed to load index data:', err)
-      setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (!filterSheetOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setFilterSheetOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [filterSheetOpen])
 
   const filteredPhotos = useMemo<Photo[]>(() => {
     let photos = allPhotos
-
-    // Filter by source
-    if (sources.size < 3) {
-      photos = photos.filter(p => sources.has(p.source))
-    }
-
-    // Filter by selected slugs
     if (selectedSlugs.size > 0) {
       photos = photos.filter(p => p.slugs.some(s => selectedSlugs.has(s)))
     }
-
-    // Filter by person and sort by that person's face score descending
     if (person) {
-      photos = photos.filter(p => p.faces.some(f => f.name === person))
+      photos = photos.filter(p =>
+        p.faces.some(f => f.name === person && f.score >= FACE_SCORE_THRESHOLD)
+      )
       photos = [...photos].sort((a, b) => {
         const sa = a.faces.find(f => f.name === person)?.score ?? 0
         const sb = b.faces.find(f => f.name === person)?.score ?? 0
         return sb - sa
       })
     }
-
     return photos
-  }, [allPhotos, sources, selectedSlugs, person])
-
-  const handleToggleSource = useCallback((src: string) => {
-    setSources(prev => {
-      const next = new Set(prev)
-      if (next.has(src)) next.delete(src)
-      else next.add(src)
-      return next
-    })
-  }, [])
+  }, [allPhotos, selectedSlugs, person])
 
   const handleSetSelectedSlugs = useCallback((next: Set<string>) => {
     setSelectedSlugs(new Set(next))
   }, [])
 
   const handleSelectAll = useCallback(() => {
-    // Collect all leaf slugs
     function collectLeaves(nodes: CategoryNode[]): string[] {
       const result: string[] = []
       for (const node of nodes) {
@@ -107,66 +112,62 @@ export default function App() {
       }
       return result
     }
-    const all = collectLeaves(categories)
-    setSelectedSlugs(new Set(all))
+    setSelectedSlugs(new Set(collectLeaves(categories)))
   }, [categories])
 
-  const handleClearAll = useCallback(() => {
-    setSelectedSlugs(new Set())
-  }, [])
+  const handleClearAll = useCallback(() => setSelectedSlugs(new Set()), [])
+
+  const activeFilters = (person ? 1 : 0) + (selectedSlugs.size > 0 ? 1 : 0)
 
   if (loading) {
-    return (
-      <div className="loading-overlay">
-        <span>Loading photos...</span>
-      </div>
-    )
+    return <div className="loading-overlay"><div className="loading-spinner" /></div>
   }
 
   return (
     <div className="app-layout">
       <Sidebar
         categories={categories}
-        categoryCounts={categoryCounts}
-        people={people}
-        personSlugs={personSlugs}
         personSlugsSet={personSlugsSet}
         selectedSlugs={selectedSlugs}
+        people={people}
         person={person}
+        sheetOpen={filterSheetOpen}
+        nameToDisplay={nameToDisplay}
         onSetSelectedSlugs={handleSetSelectedSlugs}
         onSelectAll={handleSelectAll}
         onClearAll={handleClearAll}
         onSetPerson={setPerson}
+        onCloseSheet={() => setFilterSheetOpen(false)}
       />
+
+      <div className={`sidebar-backdrop${filterSheetOpen ? ' open' : ''}`}
+           onClick={() => setFilterSheetOpen(false)} />
+
       <div className="main-area">
-        {/* Toolbar */}
-        <div className="toolbar">
-          <div className="toolbar-group">
-            <span className="toolbar-label">Source</span>
-            {(['smugmug', 'yearbook', 'robotics'] as const).map(src => (
-              <span
-                key={src}
-                className={`src-pill ${sources.has(src) ? `on-${src}` : 'off'}`}
-                onClick={() => handleToggleSource(src)}
-              >
-                {src === 'smugmug' ? 'SmugMug' : src.charAt(0).toUpperCase() + src.slice(1)}
-              </span>
-            ))}
-          </div>
-          <span className="toolbar-status">
-            {filteredPhotos.length.toLocaleString()} photo{filteredPhotos.length !== 1 ? 's' : ''}
-            {allPhotos.length !== filteredPhotos.length && ` of ${allPhotos.length.toLocaleString()}`}
-          </span>
-        </div>
-        <Gallery
-          photos={filteredPhotos}
-          onPhotoClick={setLightboxIdx}
-        />
+        {/* Mobile filter button */}
+        <button
+          className="filter-fab"
+          onClick={() => setFilterSheetOpen(true)}
+          aria-label="Filters"
+        >
+          <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="2" y1="5" x2="16" y2="5"/>
+            <line x1="5" y1="9" x2="13" y2="9"/>
+            <line x1="7" y1="13" x2="11" y2="13"/>
+          </svg>
+          <span>Filters</span>
+          {activeFilters > 0 && <span className="filter-fab-badge">{activeFilters}</span>}
+        </button>
+
+        <Gallery photos={filteredPhotos} onPhotoClick={setLightboxIdx} />
       </div>
+
       {lightboxIdx >= 0 && (
         <Lightbox
           photos={filteredPhotos}
           idx={lightboxIdx}
+          slugToName={slugToName}
+          nameToDisplay={nameToDisplay}
           onClose={() => setLightboxIdx(-1)}
           onNav={setLightboxIdx}
         />

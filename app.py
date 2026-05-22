@@ -1315,7 +1315,9 @@ def _pop_mobile_session_code(code: str) -> dict | None:
 def auth_activate_code():
     """
     Called by the WKWebView after ASWebAuthenticationSession returns the temp code.
-    Sets the Flask session (cookie) on the webview and redirects to /recap.
+    Sets the Flask session (cookie) on the webview and redirects back to the
+    landing page for the iOS wrapper so opening/signing in does not immediately
+    launch or generate the recap.
     """
     code = request.args.get("code")
     if not code:
@@ -1326,7 +1328,7 @@ def auth_activate_code():
     session["email"] = data["email"]
     session["access_token"] = data["access_token"]
     session["access_token_secret"] = data["access_token_secret"]
-    dest = "/recap?iosapp=1" if request.args.get("iosapp") == "1" else "/recap"
+    dest = "/?iosapp=1" if request.args.get("iosapp") == "1" else "/recap"
     return redirect(dest)
 
 

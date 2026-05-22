@@ -7,37 +7,23 @@ interface GalleryProps {
 }
 
 export default function Gallery({ photos, onPhotoClick }: GalleryProps) {
-  const [displayCount, setDisplayCount] = useState(100)
+  const [displayCount, setDisplayCount] = useState(150)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const observerRef = useRef<IntersectionObserver | null>(null)
 
-  // Reset displayCount when photos array reference changes
   useEffect(() => {
-    setDisplayCount(100)
+    setDisplayCount(150)
   }, [photos])
 
-  // Intersection observer for infinite scroll
   useEffect(() => {
-    if (observerRef.current) {
-      observerRef.current.disconnect()
-    }
-
+    if (observerRef.current) observerRef.current.disconnect()
     observerRef.current = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting) {
-        setDisplayCount(prev => {
-          if (prev < photos.length) return prev + 100
-          return prev
-        })
+        setDisplayCount(prev => prev < photos.length ? prev + 150 : prev)
       }
-    }, { rootMargin: '800px' })
-
-    if (sentinelRef.current) {
-      observerRef.current.observe(sentinelRef.current)
-    }
-
-    return () => {
-      observerRef.current?.disconnect()
-    }
+    }, { rootMargin: '1000px' })
+    if (sentinelRef.current) observerRef.current.observe(sentinelRef.current)
+    return () => { observerRef.current?.disconnect() }
   }, [photos])
 
   const visible = photos.slice(0, displayCount)
@@ -47,16 +33,17 @@ export default function Gallery({ photos, onPhotoClick }: GalleryProps) {
       <div className="gallery-grid">
         {visible.length === 0 ? (
           <div className="gallery-empty">
-            <span className="gallery-empty-icon">📷</span>
-            No photos match the current filters.
+            <svg className="gallery-empty-icon" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="3" />
+              <circle cx="8.5" cy="10" r="1.6" />
+              <path d="M21 16l-5-5-9 8" />
+            </svg>
+            <div className="gallery-empty-title">No photos found</div>
+            <div className="gallery-empty-sub">Try adjusting your filters or search.</div>
           </div>
         ) : (
           visible.map((photo, idx) => (
-            <PhotoCard
-              key={photo.path}
-              photo={photo}
-              onClick={() => onPhotoClick(idx)}
-            />
+            <PhotoCard key={photo.path} photo={photo} onClick={() => onPhotoClick(idx)} />
           ))
         )}
       </div>
@@ -65,31 +52,18 @@ export default function Gallery({ photos, onPhotoClick }: GalleryProps) {
   )
 }
 
-interface PhotoCardProps {
-  photo: Photo
-  onClick: () => void
-}
-
-function PhotoCard({ photo, onClick }: PhotoCardProps) {
-  const filename = photo.path.split('/').pop() ?? photo.path
-
+function PhotoCard({ photo, onClick }: { photo: Photo; onClick: () => void }) {
+  const [loaded, setLoaded] = useState(false)
   return (
-    <div className="photo-card" onClick={onClick}>
-      <div className="photo-thumb">
-        <img
-          src={`https://photos.recap.pinewood.one/${photo.path}`}
-          alt={photo.album}
-          loading="lazy"
-        />
-        <div className={`src-dot ${photo.source}`} />
-        {photo.faces.length > 0 && (
-          <div className="face-badge">👤 {photo.faces.length}</div>
-        )}
-      </div>
-      <div className="photo-info">
-        <div className="photo-album">{photo.album}</div>
-        <div className="photo-file">{filename}</div>
-      </div>
+    <div className={`photo-card${loaded ? ' loaded' : ''}`} onClick={onClick}>
+      <img
+        src={`https://photos.recap.pinewood.one/${photo.path}`}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        style={{ opacity: loaded ? 1 : 0 }}
+      />
     </div>
   )
 }

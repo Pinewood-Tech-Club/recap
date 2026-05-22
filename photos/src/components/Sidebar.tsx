@@ -3,16 +3,57 @@ import { CategoryNode, Person } from '../types'
 
 interface SidebarProps {
   categories: CategoryNode[]
-  categoryCounts: Record<string, number>
-  people: Person[]
-  personSlugs: Record<string, string[]>
   personSlugsSet: Map<string, Set<string>>
   selectedSlugs: Set<string>
+  people: Person[]
   person: string
+  sheetOpen: boolean
+  nameToDisplay: Record<string, string>
   onSetSelectedSlugs: (slugs: Set<string>) => void
   onSelectAll: () => void
   onClearAll: () => void
   onSetPerson: (name: string) => void
+  onCloseSheet: () => void
+}
+
+// ── Icons ────────────────────────────────────────────────────────────────────
+
+const IconSearch = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+    <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.5" y2="16.5" />
+  </svg>
+)
+const IconClose = ({ size = 12 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+    <line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" />
+  </svg>
+)
+const IconChevron = () => (
+  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 6 15 12 9 18" />
+  </svg>
+)
+const IconBrand = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="5" width="18" height="14" rx="3" /><circle cx="8.5" cy="10" r="1.6" /><path d="M21 16l-5-5-9 8" />
+  </svg>
+)
+
+function TreeCheck({ state }: { state: CheckState }) {
+  return (
+    <span className={`tree-check ${state}`}>
+      {state === 'on' && (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      )}
+      {state === 'mid' && (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round">
+          <line x1="6" y1="12" x2="18" y2="12" />
+        </svg>
+      )}
+    </span>
+  )
 }
 
 // ── Person Search ──────────────────────────────────────────────────────────────
@@ -30,14 +71,18 @@ function PersonSearch({ people, person, onSetPerson }: PersonSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const filtered = query.trim()
-    ? people.filter(p => p.name.toLowerCase().includes(query.trim().toLowerCase()))
+    ? people.filter(p => {
+        const q = query.trim().toLowerCase()
+        return (
+          p.name.toLowerCase().includes(q) ||
+          (p.display_name?.toLowerCase() ?? '').includes(q)
+        )
+      })
     : people
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -55,11 +100,14 @@ function PersonSearch({ people, person, onSetPerson }: PersonSearchProps) {
     inputRef.current?.focus()
   }
 
+  const selectedPerson = people.find(p => p.name === person)
+  const displayLabel = selectedPerson?.display_name || person
+
   return (
     <div className="person-search-wrap" ref={wrapRef}>
       <div className="sidebar-title">Person</div>
       <div className="person-search-input-wrap">
-        <span className="person-search-icon">⌕</span>
+        <span className="person-search-icon"><IconSearch /></span>
         <input
           ref={inputRef}
           className="person-search-input"
@@ -70,15 +118,15 @@ function PersonSearch({ people, person, onSetPerson }: PersonSearchProps) {
           onFocus={() => setOpen(true)}
         />
         {(query || person) && (
-          <button className="person-search-clear" onClick={handleClear} title="Clear">×</button>
+          <button className="person-search-clear" onClick={handleClear} title="Clear" aria-label="Clear"><IconClose /></button>
         )}
       </div>
       {person && !open && (
         <div className="person-selected-chip">
           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {person}
+            {displayLabel}
           </span>
-          <button onClick={() => onSetPerson('')} title="Clear person filter">×</button>
+          <button onClick={() => onSetPerson('')} title="Clear person filter" aria-label="Clear person filter"><IconClose size={10} /></button>
         </div>
       )}
       {open && (
@@ -92,7 +140,12 @@ function PersonSearch({ people, person, onSetPerson }: PersonSearchProps) {
                 className={`person-dropdown-item ${p.name === person ? 'active' : ''}`}
                 onMouseDown={e => { e.preventDefault(); handleSelect(p.name) }}
               >
-                <span className="person-dropdown-item-name">{p.name}</span>
+                <div className="person-dropdown-item-info">
+                  <span className="person-dropdown-item-name">{p.display_name || p.name}</span>
+                  {p.display_name && (
+                    <span className="person-dropdown-item-username">{p.name}</span>
+                  )}
+                </div>
                 <span className="person-dropdown-item-count">{p.count}</span>
               </div>
             ))
@@ -111,7 +164,6 @@ interface TreeNode {
   isLeaf: boolean
   depth: number
   children: TreeNode[]
-  _cat: CategoryNode
 }
 
 function buildTreeNodes(cats: CategoryNode[], depth: number): TreeNode[] {
@@ -121,18 +173,12 @@ function buildTreeNodes(cats: CategoryNode[], depth: number): TreeNode[] {
     isLeaf: Array.isArray(cat.albums),
     depth,
     children: cat.subcategories ? buildTreeNodes(cat.subcategories, depth + 1) : [],
-    _cat: cat,
   }))
 }
 
 function getLeaves(node: TreeNode): TreeNode[] {
   if (node.isLeaf) return [node]
   return node.children.flatMap(getLeaves)
-}
-
-function getNodeCount(node: TreeNode, counts: Record<string, number>): number {
-  if (node.isLeaf) return counts[node.slug] ?? 0
-  return node.children.reduce((s, c) => s + getNodeCount(c, counts), 0)
 }
 
 type CheckState = 'on' | 'off' | 'mid'
@@ -148,84 +194,56 @@ function getNodeState(node: TreeNode, selected: Set<string>): CheckState {
 
 interface TreeNodeProps {
   node: TreeNode
-  counts: Record<string, number>
   selected: Set<string>
-  person: string
-  personSlugsSet: Map<string, Set<string>>
   initialOpen: boolean
   filterQuery: string
   onToggle: (node: TreeNode) => void
 }
 
-function TreeNodeEl({ node, counts, selected, person, personSlugsSet, initialOpen, filterQuery, onToggle }: TreeNodeProps) {
+function doesAnyMatch(n: TreeNode, q: string): boolean {
+  if (n.name.toLowerCase().includes(q.toLowerCase())) return true
+  return n.children.some(c => doesAnyMatch(c, q))
+}
+
+function TreeNodeEl({ node, selected, initialOpen, filterQuery, onToggle }: TreeNodeProps) {
   const [open, setOpen] = useState(initialOpen)
 
-  // Reset open state when filter changes to show matched nodes
   useEffect(() => {
     if (filterQuery) setOpen(true)
   }, [filterQuery])
 
   const state = getNodeState(node, selected)
-  const count = getNodeCount(node, counts)
 
-  // Determine struck state (person filter dimming)
-  const isStruck = (() => {
-    if (!person) return false
-    const pSlugs = personSlugsSet.get(person)
-    if (!pSlugs) return true
-    return !getLeaves(node).some(l => pSlugs.has(l.slug))
-  })()
-
-  // Filter logic
   const matchesFilter = !filterQuery || node.name.toLowerCase().includes(filterQuery.toLowerCase())
   const childrenMatchFilter = !filterQuery || node.children.some(c => doesAnyMatch(c, filterQuery))
 
-  function doesAnyMatch(n: TreeNode, q: string): boolean {
-    if (n.name.toLowerCase().includes(q.toLowerCase())) return true
-    return n.children.some(c => doesAnyMatch(c, q))
-  }
-
   if (filterQuery && !matchesFilter && !childrenMatchFilter) return null
 
-  function applyRef(el: HTMLInputElement | null) {
-    if (!el) return
-    el.checked = state === 'on'
-    el.indeterminate = state === 'mid'
-  }
-
+  const hasChildren = !node.isLeaf && node.children.length > 0
   const indent = 8 + node.depth * 16
 
   return (
     <div className="tree-node">
       <div
-        className="tree-row"
+        className={`tree-row${state === 'on' ? ' selected' : ''}`}
         style={{ paddingLeft: indent }}
         onClick={() => onToggle(node)}
       >
         <span
-          className="tree-toggle"
+          className={`tree-toggle${hasChildren ? '' : ' leaf'}${open ? ' open' : ''}`}
           onClick={e => {
-            if (!node.isLeaf && node.children.length > 0) {
+            if (hasChildren) {
               e.stopPropagation()
               setOpen(o => !o)
             }
           }}
         >
-          {!node.isLeaf && node.children.length > 0 ? (open ? '▾' : '▸') : ''}
+          {hasChildren && <IconChevron />}
         </span>
-        <input
-          ref={applyRef}
-          type="checkbox"
-          className="tree-cb"
-          onClick={e => { e.stopPropagation(); onToggle(node) }}
-          readOnly
-        />
-        <span className={`tree-label${node.isLeaf ? '' : ' branch'}${isStruck ? ' struck' : ''}`}>
+        <TreeCheck state={state} />
+        <span className={`tree-label${node.isLeaf ? '' : ' branch'}`}>
           {node.name}
         </span>
-        {count > 0 && (
-          <span className={`tree-count${isStruck ? ' struck' : ''}`}>{count}</span>
-        )}
       </div>
       {!node.isLeaf && node.children.length > 0 && (
         <div className={`tree-children${open ? '' : ' collapsed'}`}>
@@ -233,10 +251,7 @@ function TreeNodeEl({ node, counts, selected, person, personSlugsSet, initialOpe
             <TreeNodeEl
               key={child.slug}
               node={child}
-              counts={counts}
               selected={selected}
-              person={person}
-              personSlugsSet={personSlugsSet}
               initialOpen={false}
               filterQuery={filterQuery}
               onToggle={onToggle}
@@ -252,38 +267,41 @@ function TreeNodeEl({ node, counts, selected, person, personSlugsSet, initialOpe
 
 export default function Sidebar({
   categories,
-  categoryCounts,
-  people,
-  personSlugs: _personSlugs,
-  personSlugsSet,
   selectedSlugs,
+  people,
   person,
+  sheetOpen,
   onSetSelectedSlugs,
   onSelectAll,
   onClearAll,
   onSetPerson,
+  onCloseSheet,
 }: SidebarProps) {
   const [treeFilter, setTreeFilter] = useState('')
-
   const treeNodes = buildTreeNodes(categories, 0)
 
   const handleToggle = useCallback((node: TreeNode) => {
     const state = getNodeState(node, selectedSlugs)
     const leaves = getLeaves(node)
     const next = new Set(selectedSlugs)
-    if (state === 'on') {
-      leaves.forEach(l => next.delete(l.slug))
-    } else {
-      leaves.forEach(l => next.add(l.slug))
-    }
+    if (state === 'on') leaves.forEach(l => next.delete(l.slug))
+    else leaves.forEach(l => next.add(l.slug))
     onSetSelectedSlugs(next)
   }, [selectedSlugs, onSetSelectedSlugs])
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
+    <aside className={`sidebar${sheetOpen ? ' sheet-open' : ''}`}>
+      <div className="sheet-handle" />
+
+      <div className="sidebar-section sidebar-brand">
+        <span className="sidebar-brand-mark"><IconBrand /></span>
+        <span className="sidebar-brand-name">Recap</span>
+      </div>
+
+      <div className="sidebar-section sidebar-header">
         <PersonSearch people={people} person={person} onSetPerson={onSetPerson} />
       </div>
+
       <div className="tree-section">
         <div className="tree-section-header">
           <span className="tree-section-title">Categories</span>
@@ -306,16 +324,17 @@ export default function Sidebar({
             <TreeNodeEl
               key={node.slug}
               node={node}
-              counts={categoryCounts}
               selected={selectedSlugs}
-              person={person}
-              personSlugsSet={personSlugsSet}
               initialOpen={true}
               filterQuery={treeFilter}
               onToggle={handleToggle}
             />
           ))}
         </div>
+      </div>
+
+      <div className="sheet-done-wrap">
+        <button className="sheet-done-btn" onClick={onCloseSheet}>Done</button>
       </div>
     </aside>
   )

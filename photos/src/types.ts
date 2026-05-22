@@ -21,5 +21,6 @@ export interface CategoryNode {
 
 export interface Person {
   name: string
+  display_name?: string
   count: number
 }
