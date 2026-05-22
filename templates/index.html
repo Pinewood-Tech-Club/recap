@@ -9,26 +9,32 @@
   <div class="card">
     <h1>Schoology Recap</h1>
     <h2>Presented by the <span style="color: var(--accent); font-weight: 700;">Pinewood Tech Club</span></h2>
-    <p>Click below and sign in with your Pinewood Schoology account to get a summary of your academic achievements.</p>
-    <a class="button disabled" onclick="btnClick()">Sign in with Schoology</a>
-    <p><input type="checkbox" id="terms-checkbox" />
-    <label for="terms-checkbox" id="terms-label">I agree to the <a href="/terms">terms</a>.</label></p>
-    <p style="font-size: 10pt">Results are not a reflection of one's academic ability and should not be used to harm others. May contain inaccuracies</p>
+    {% if recap_id %}
+    <br />
+      <h2>Hi {{ user_name }}! Dive back in?</h2>
+      <a class="button" href="/recap/{{ recap_id }}">View Your Recap</a>
+      <p style="font-size: 10pt">Not you? <a href="/auth/logout">Log Out</a> or <a href="/terms">View Terms</a>.</p>
+    {% else %}
+      <p>Click below and sign in with your Pinewood Schoology account to get a summary of your academic achievements.</p>
+      <a class="button disabled" onclick="btnClick()">Sign in with Schoology</a>
+      <p><input type="checkbox" id="terms-checkbox" />
+      <label for="terms-checkbox" id="terms-label">I agree to the <a href="/terms">terms</a>.</label></p>
+      <p style="font-size: 10pt">Results are not a reflection of one's academic ability and should not be used to harm others. May contain inaccuracies</p>
+    {% endif %}
+    <p><a href="/photos">Photos</a></p>
   </div>
+  {% if not recap_id %}
   <script>
     document.getElementById('terms-checkbox').addEventListener('change', function() {
       document.querySelector('.button').classList.toggle('disabled', !this.checked);
     });
 
-    // move the button onclick function to a separate function
     function btnClick() {
       if (document.getElementById('terms-checkbox').checked) {
         window.location.href = '{{ url_for('auth_start') }}';
       } else {
-        // blink the terms text label green
         document.getElementById('terms-label').style.color = 'red';
         document.getElementById('terms-label').style.fontWeight = 'bold';
-        // cancel other timeouts
         setTimeout(function() {
           document.getElementById('terms-label').style.color = 'var(--muted)';
           document.getElementById('terms-label').style.fontWeight = 'normal';
@@ -36,4 +42,5 @@
       }
     }
   </script>
+  {% endif %}
 {% endblock %}

@@ -16,7 +16,7 @@
     />
     <script>
       if (new URLSearchParams(location.search).get("iosapp") === "1") {
-        document.documentElement.style.setProperty("--ios-notch-offset", "1.5rem");
+        document.documentElement.classList.add("iosapp");
       }
     </script>
   </head>
@@ -33,7 +33,17 @@
         </div>
       </div>
     </div>
-    <div class="recap-container" style="">
+    <div class="recap-container" id="main-recap-container" style="">
+      <a id="home-btn" href="/" aria-label="Home" title="Back to home">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        </svg>
+      </a>
+      <button id="download-btn" aria-label="Download slide" title="Download this slide" style="display:none">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>
+        </svg>
+      </button>
       <div class="slides">
         <div class="slide-base" id="slide1">
           <div class="photos-album-selection-scroll"></div>
@@ -80,7 +90,6 @@
               <div class="nc-sizer">
                 <p
                   class="for2subtxt bare-reveal-text"
-                  style="margin-top: 2rem"
                   id="s2-p-top3intro"
                 >
                   <span id="s2-top3-intro"></span>
@@ -130,5 +139,6 @@
     const RECAP_ID = {{ recap_id | tojson }};
     const IS_GENERATING = {{ is_generating | tojson }};
   </script>
+  <script src="https://unpkg.com/html-to-image@1.11.11/dist/html-to-image.js"></script>
   <script src="{{ url_for('static', filename='js/recap.js') }}"></script>
 </html>

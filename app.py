@@ -30,6 +30,7 @@ from flask import (
     url_for,
     jsonify,
     session,
+    send_from_directory,
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sock import Sock
@@ -53,6 +54,7 @@ import requests_oauthlib
 import requests
 from xml.sax.saxutils import escape as xml_escape
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import galleries as galleries_module
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,6 +67,9 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # trust reverse proxy for scheme/host
 sock = Sock(app)
+
+PHOTOS_BASE_URL = os.environ.get("PHOTOS_BASE_URL", "https://photos.recap.pinewood.one")
+galleries_module.start(PHOTOS_BASE_URL)
 
 # Config
 SCHOOLOGY_CONSUMER_KEY = os.environ.get("SCHOOLOGY_CONSUMER_KEY")
@@ -1210,7 +1215,22 @@ def _pop_mobile_request_token(request_token: str) -> str | None:
 # Routes --------------------------------------------------------------------
 @app.route("/")
 def index():
-    return render_template("index.html")
+    recap_id = session.get("recap_id")
+    user_name = None
+    if recap_id:
+        recap = get_recap_by_id(recap_id)
+        if recap and recap.get("slides"):
+            user_name = recap["slides"].get("user_name")
+        else:
+            session.pop("recap_id", None)
+            recap_id = None
+    return render_template("index.html", user_name=user_name, recap_id=recap_id)
+
+
+@app.route("/auth/logout")
+def auth_logout():
+    session.clear()
+    return redirect("/")
 
 
 @app.route("/auth/start")
@@ -1389,6 +1409,7 @@ def recap_index():
 
     if existing_recap and not active_job:
         # Has completed recap, no job in progress - show existing screen
+        session["recap_id"] = existing_recap["id"]
         return render_template("recap.html",
                              recap_id=existing_recap["id"],
                              email=email,
@@ -1426,6 +1447,8 @@ def recap_view(recap_id):
     recap = get_recap_by_id(recap_id)
     if recap:
         # Completed recap
+        if recap["email"] == session.get("email"):
+            session["recap_id"] = recap_id
         return render_template("recap.html",
                              recap_id=recap_id,
                              email=recap["email"],
@@ -1501,6 +1524,39 @@ def job_ws(ws, job_id):
         subs = subscribers.get(job_id, [])
         if q in subs:
             subs.remove(q)
+
+
+@app.route("/photos")
+@app.route("/photos/")
+def photos():
+    return send_from_directory("static/photos", "index.html")
+
+
+@app.route("/photos/selection/<name>.json")
+def photos_selection(name):
+    if not galleries_module.is_ready():
+        return {"error": "galleries building, try again shortly"}, 503
+    data = galleries_module.get_selection(name)
+    if data is None:
+        return {"error": "not found"}, 404
+    from flask import jsonify
+    return jsonify(data)
+
+
+@app.route("/photos/gallery/<name>.json")
+def photos_gallery(name):
+    if not galleries_module.is_ready():
+        return {"error": "galleries building, try again shortly"}, 503
+    data = galleries_module.get_gallery(name)
+    if data is None:
+        return {"error": "not found"}, 404
+    from flask import jsonify
+    return jsonify(data)
+
+
+@app.route("/photos/<path:path>")
+def photos_assets(path):
+    return send_from_directory("static/photos", path)
 
 
 @app.route("/terms")

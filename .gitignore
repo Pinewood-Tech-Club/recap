@@ -4,3 +4,8 @@ env/
 __pycache__/
 *.db
 userdata/
+
+# Photos webapp
+photos/node_modules/
+photos/dist/
+static/photos/

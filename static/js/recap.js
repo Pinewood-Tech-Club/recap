@@ -34,6 +34,114 @@ function go_to_slide(index) {
     const id = slide_ids[cur_slide];
     document.getElementById(id).style.display = "";
     if (slide_on_enter[id]) slide_on_enter[id]();
+    _updateDownloadBtn();
+}
+
+function _updateDownloadBtn() {
+    const btn = document.getElementById('download-btn');
+    if (!btn) return;
+    btn.style.display = cur_slide === 0 ? 'none' : '';
+}
+
+function _bufToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 8192)
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    return btoa(binary);
+}
+
+async function _buildFontEmbedCSS() {
+    try {
+        const cssUrl = 'https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,100..900;1,100..900&display=swap';
+        let css = await fetch(cssUrl).then(r => r.text());
+        const urls = [...new Set([...css.matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g)].map(m => m[1]))];
+        await Promise.all(urls.map(async url => {
+            const buf = await fetch(url).then(r => r.arrayBuffer());
+            const mime = url.includes('.woff2') ? 'font/woff2' : 'font/woff';
+            css = css.replaceAll(url, `data:${mime};base64,${_bufToBase64(buf)}`);
+        }));
+        return css;
+    } catch (e) {
+        console.warn('Font embed failed, download may use system font:', e);
+        return '';
+    }
+}
+
+// On mobile/iosapp, slide fills full screen (bg extends). We scale so that the
+// 9:16 content zone = 1080×1920, then center-crop to strip the extended bg margins.
+async function _captureSlide1080x1920(slideEl) {
+    const rect = slideEl.getBoundingClientRect();
+    const isMobile = window.matchMedia('(max-aspect-ratio: 3/5)').matches;
+    const isIosApp = document.documentElement.classList.contains('iosapp');
+
+    let pixelRatio;
+    if (isIosApp || isMobile) {
+        // 9:16 zone is limited by whichever dimension is the bottleneck
+        const zoneWidth = Math.min(rect.width, rect.height * 9 / 16);
+        pixelRatio = 1080 / zoneWidth;
+    } else {
+        pixelRatio = 1920 / rect.height;
+    }
+
+    const fontEmbedCSS = await _buildFontEmbedCSS();
+    let dataUrl = await htmlToImage.toPng(slideEl, { pixelRatio, fontEmbedCSS, cacheBust: true });
+
+    if (isIosApp || isMobile) {
+        const img = new Image();
+        img.src = dataUrl;
+        await new Promise(r => { img.onload = r; });
+        const canvas = document.createElement('canvas');
+        canvas.width = 1080;
+        canvas.height = 1920;
+        const ctx = canvas.getContext('2d');
+        // Center-crop both axes to strip extended bg margins on either side
+        const srcX = Math.max(0, Math.round((img.width - 1080) / 2));
+        const srcY = Math.max(0, Math.round((img.height - 1920) / 2));
+        ctx.drawImage(img, srcX, srcY, 1080, 1920, 0, 0, 1080, 1920);
+        dataUrl = canvas.toDataURL('image/png');
+    }
+    return dataUrl;
+}
+
+async function _downloadCurrentSlide() {
+    const btn = document.getElementById('download-btn');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+
+    snapCurrent();
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const slideEl = document.getElementById(slide_ids[cur_slide]);
+    try {
+        const dataUrl = await _captureSlide1080x1920(slideEl);
+        const a = document.createElement('a');
+        a.download = `pinewood-recap-slide${cur_slide + 1}.png`;
+        a.href = dataUrl;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } catch (err) {
+        console.error('Slide download failed:', err);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+document.getElementById('download-btn').addEventListener('click', _downloadCurrentSlide);
+
+async function captureSlideForIOS() {
+    if (!window.webkit?.messageHandlers?.slideCapture) return;
+    snapCurrent();
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const slideEl = document.getElementById(slide_ids[cur_slide]);
+    try {
+        const dataUrl = await _captureSlide1080x1920(slideEl);
+        window.webkit.messageHandlers.slideCapture.postMessage(dataUrl);
+    } catch (err) {
+        console.error('iOS slide capture failed:', err);
+        window.webkit.messageHandlers.slideCapture.postMessage(null);
+    }
 }
 
 function next_slide() { go_to_slide(cur_slide + 1); }
@@ -59,7 +167,7 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft"  || e.key === "ArrowUp")   backward();
 });
 
-document.addEventListener("click", (e) => { if (!e.target.closest("a")) forward(); });
+document.addEventListener("click", (e) => { if (!e.target.closest("a") && !e.target.closest("#download-btn")) forward(); });
 
 let _touch_start_x = null;
 let _suppressSwipe = false;
@@ -902,71 +1010,102 @@ slide_ids.forEach((id, i) => {
 });
 cur_slide = start_index;
 if (slide_on_enter[slide_ids[cur_slide]]) slide_on_enter[slide_ids[cur_slide]]();
+_updateDownloadBtn();
 
 (async function initPhotoScroll() {
     const container = document.querySelector('.photos-album-selection-scroll');
     if (!container) return;
 
-    const res = await fetch('https://photos.recap.pinewood.one/selection/adam_xu.json');
+    const res = await fetch('/photos/selection/26mwang.json');
     const { photos } = await res.json();
 
+    // Full shuffle
     for (let i = photos.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [photos[i], photos[j]] = [photos[j], photos[i]];
     }
 
-    const track = document.createElement('div');
-    track.className = 'scroll-track';
-    container.appendChild(track);
+    const isIosApp = document.documentElement.classList.contains('iosapp');
+    const isLandscape = window.innerWidth / window.innerHeight > 9 / 16;
+    const useThreeCols = isIosApp && isLandscape;
 
-    // Render photos twice for seamless looping
-    [...photos, ...photos].forEach(photo => {
-        const wrap = document.createElement('div');
-        wrap.className = 'photo-wrap';
-        const img = document.createElement('img');
-        img.src = `https://photos.recap.pinewood.one/${photo.path}`;
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        wrap.appendChild(img);
-        track.appendChild(wrap);
-    });
-
-    // Assign each photo a fixed random tilt once — no alternating per tick
-    track.querySelectorAll('.photo-wrap').forEach((wrap, i) => {
-        const sign = i % 2 === 0 ? 1 : -1;
-        const deg = Math.random() * 10 + 5;
-        wrap.style.transform = `rotate(${sign * deg}deg)`;
-    });
+    // Build a scroll track for a given photo group, width, and left offset (percent)
+    function buildTrack(photoGroup, widthPct, leftPct) {
+        const track = document.createElement('div');
+        track.className = 'scroll-track';
+        track.style.width = `${widthPct}%`;
+        track.style.left = `${leftPct}%`;
+        container.appendChild(track);
+        // Double the group for seamless looping
+        [...photoGroup, ...photoGroup].forEach(photo => {
+            const wrap = document.createElement('div');
+            wrap.className = 'photo-wrap';
+            const img = document.createElement('img');
+            img.src = `https://photos.recap.pinewood.one/${photo.path}`;
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            wrap.appendChild(img);
+            track.appendChild(wrap);
+        });
+        track.querySelectorAll('.photo-wrap').forEach((wrap, i) => {
+            const sign = i % 2 === 0 ? 1 : -1;
+            wrap.style.transform = `rotate(${(sign * (Math.random() * 10 + 5)).toFixed(1)}deg)`;
+        });
+        return track;
+    }
 
     container.style.setProperty('--crinkle-rot', `${Math.random() * 360}deg`);
     container.style.setProperty('--crinkle-x', `${Math.random() * 100}%`);
     container.style.setProperty('--crinkle-y', `${Math.random() * 100}%`);
 
-    const PX_PER_SEC = 150;
-    const CRINKLE_INTERVAL = 800;
-    let y = 0;
+    // Tracks: [{track, y, speed}]
+    const trackStates = [];
+
+    if (useThreeCols) {
+        // Split photos into 3 groups; re-shuffle each so columns look different
+        const n = photos.length;
+        const t = Math.ceil(n / 3);
+        const groups = [photos.slice(0, t), photos.slice(t, t * 2), photos.slice(t * 2)];
+        groups.forEach(g => {
+            for (let i = g.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [g[i], g[j]] = [g[j], g[i]];
+            }
+        });
+        // Three columns: 30% wide each, evenly spaced with equal margins
+        const colW = 30, gap = (100 - colW * 3) / 4;
+        const speeds = [130, 95, 160];
+        const startYs = [0, 120, 60]; // stagger so they're not in sync
+        groups.forEach((g, i) => {
+            const track = buildTrack(g, colW, gap + i * (colW + gap));
+            trackStates.push({ track, y: startYs[i], speed: speeds[i] });
+        });
+    } else {
+        const track = buildTrack(photos, 67, 16.5);
+        trackStates.push({ track, y: 0, speed: 150 });
+    }
+
     let lastTime = null;
     let lastCrinkle = 0;
 
-    function applyCrinkle() {
-        container.style.setProperty('--crinkle-rot', `${Math.random() * 360}deg`);
-        container.style.setProperty('--crinkle-x', `${Math.random() * 100}%`);
-        container.style.setProperty('--crinkle-y', `${Math.random() * 100}%`);
-    }
-
     function scrollStep(ts) {
-        if (lastTime !== null) {
-            const dt = (ts - lastTime) / 1000;
-            y += PX_PER_SEC * dt;
-            const half = track.scrollHeight / 2;
-            if (y >= half) y -= half;
-            track.style.transform = `translateY(-${y}px)`;
-        }
-        if (ts - lastCrinkle > CRINKLE_INTERVAL) {
-            applyCrinkle();
+        const dt = lastTime !== null ? (ts - lastTime) / 1000 : 0;
+        lastTime = ts;
+
+        if (ts - lastCrinkle > 800) {
+            container.style.setProperty('--crinkle-rot', `${Math.random() * 360}deg`);
+            container.style.setProperty('--crinkle-x', `${Math.random() * 100}%`);
+            container.style.setProperty('--crinkle-y', `${Math.random() * 100}%`);
             lastCrinkle = ts;
         }
-        lastTime = ts;
+
+        for (const state of trackStates) {
+            state.y += state.speed * dt;
+            const half = state.track.scrollHeight / 2;
+            if (half > 0 && state.y >= half) state.y -= half;
+            state.track.style.transform = `translateY(-${state.y}px)`;
+        }
+
         requestAnimationFrame(scrollStep);
     }
     requestAnimationFrame(scrollStep);
