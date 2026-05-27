@@ -93,11 +93,18 @@ body {
 
 .activity-content {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
     padding: calc(3.6 * var(--su)) calc(3.7 * var(--su));
     color: #fff;
+}
+
+@media (max-aspect-ratio: 3/5) {
+    .activity-content {
+        padding-bottom: calc((100dvh - 100vw * 16 / 9) / 2 + 3.6 * var(--su));
+    }
 }
 
 .slide-activity.activity-light .activity-content {
@@ -642,9 +649,13 @@ a {
         padding-bottom: calc(2.7 * var(--su) + var(--mobile-pad));
     }
 
+
     #slide-senioritis .s2cont {
-        padding-top: calc(var(--mobile-pad) + 2.7 * var(--su));
+        padding-top: calc(var(--mobile-pad) + 8 * var(--su));
         padding-bottom: calc(var(--mobile-pad) + 2.7 * var(--su));
+    }
+    #slide-senioritis .sen-score {
+        font-size: calc(15 * var(--su));
     }
 }
 
@@ -690,8 +701,15 @@ a {
     padding-right: calc(2.7 * var(--su) + var(--iosapp-hpad));
 }
 
+.iosapp .activity-content {
+    padding-bottom: calc(var(--iosapp-vpad) + 3.6 * var(--su));
+    padding-left: calc(var(--iosapp-hpad) + 3.7 * var(--su));
+    padding-right: calc(var(--iosapp-hpad) + 3.7 * var(--su));
+}
+
 .iosapp #slide-senioritis .s2cont {
-    padding-top: calc(var(--iosapp-vpad) + 2.7 * var(--su));
+    justify-content: flex-start;
+    padding-top: calc(var(--iosapp-vpad) + 8 * var(--su));
     padding-bottom: calc(var(--iosapp-vpad) + 2.7 * var(--su));
     padding-left: calc(var(--iosapp-hpad) + 2.7 * var(--su));
     padding-right: calc(var(--iosapp-hpad) + 2.7 * var(--su));
@@ -907,7 +925,15 @@ a {
 #slide-senioritis .s2cont {
     position: relative;
     z-index: 1;
-    justify-content: center;
+    justify-content: flex-start;
+    padding-top: calc(8 * var(--su));
+}
+
+@media (min-aspect-ratio: 3/5) {
+    #slide-senioritis .s2cont {
+        justify-content: center;
+        padding-top: 0;
+    }
 }
 
 .sen-eyebrow {

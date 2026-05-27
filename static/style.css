@@ -120,6 +120,10 @@ body.home-body.no-hover-body {
   margin: 0 auto;
 }
 
+.iosapp .home-wrap {
+  padding-top: calc(clamp(40px, 8vw, 80px) + env(safe-area-inset-top, 16px));
+}
+
 .home-title {
   font-family: 'Noto Serif', Georgia, serif;
   font-size: clamp(52px, 9vw, 88px);
