@@ -1,9 +1,3 @@
-// Global state
-let ws = null;
-let wsJobDone = false;
-let wsRetries = 0;
-let pollTimer = null;
-const WS_MAX_RETRIES = 3;
 const COPY_SHARE_TOOLTIP_DEFAULT = 'Copy Share URL';
 const COPY_SHARE_TOOLTIP_SUCCESS = 'Copied Share URL';
 
@@ -11,10 +5,7 @@ const COPY_SHARE_TOOLTIP_SUCCESS = 'Copied Share URL';
 function init_page() {
     if (SHOW_EXISTING) {
         showExistingRecapScreen();
-    } else if (IS_GENERATING) {
-        connectToJobWebSocket(RECAP_ID);
-    } else {
-        // Completed recap - load and display
+    } else if (RECAP_ID) {
         loadCompletedRecap(RECAP_ID);
     }
 }
@@ -61,100 +52,6 @@ function debugLog(msg) {
     el.appendChild(line);
     while (el.children.length > 50) el.removeChild(el.firstChild);
     el.scrollTop = el.scrollHeight;
-}
-
-// Update the assignment stream ticker (placeholder for future zoom-by animation)
-function showAssignmentStream(course, assignments) {
-    const el = document.getElementById("assignment-stream");
-    if (!el) return;
-    el.textContent = `${course}: ${assignments.slice(0, 3).join(", ")}${assignments.length > 3 ? ` +${assignments.length - 3} more` : ""}`;
-}
-
-// Connect to WebSocket for job updates
-function connectToJobWebSocket(jobId) {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws/job/${jobId}`;
-    showGeneratingScreen();
-    wsJobDone = false;
-    wsRetries = 0;
-    openWs(jobId, wsUrl);
-}
-
-function openWs(jobId, wsUrl) {
-    ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-        wsRetries = 0;
-        debugLog("connected");
-    };
-
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        handleJobUpdate(data);
-    };
-
-    ws.onerror = (error) => {
-        debugLog("error: " + error.type);
-    };
-
-    ws.onclose = () => {
-        debugLog("closed");
-        if (!wsJobDone && wsRetries < WS_MAX_RETRIES) {
-            const delay = Math.pow(2, wsRetries) * 1000;
-            debugLog(`reconnecting in ${delay / 1000}s (attempt ${wsRetries + 1}/${WS_MAX_RETRIES})`);
-            wsRetries++;
-            setTimeout(() => openWs(jobId, wsUrl), delay);
-        }
-    };
-}
-
-// Handle job status updates
-function handleJobUpdate(data) {
-    if (data.type === "heartbeat") {
-        debugLog("heartbeat");
-        return;
-    }
-
-    const status = data.status;
-    const stage = data.stage;
-
-    if (status === "queued") {
-        debugLog("status: queued");
-        updateStatus("You're in line to generate your recap. This might take a while.");
-    } else if (status === "running") {
-        if (stage === "assignment_batch") {
-            const course = data.course || "Unknown";
-            const assignments = data.assignments || [];
-            debugLog(`${course}: ${assignments.length} assignments`);
-            showAssignmentStream(course, assignments);
-        } else {
-            debugLog(`stage: ${stage || "unknown"}${data.count !== undefined ? ` (${data.count})` : ""}${data.total !== undefined ? `/${data.total}` : ""}`);
-            updateStatus("We're generating your recap right now. This may take a few minutes.");
-        }
-    } else if (status === "done") {
-        wsJobDone = true;
-        debugLog("done — fetching recap");
-        loadCompletedRecap(RECAP_ID);
-    } else if (status === "error") {
-        wsJobDone = true;
-        debugLog("error: " + (data.error || "unknown"));
-        updateStatus("Something went wrong: " + (data.error || "Unknown error"));
-    }
-}
-
-// Show generating screen
-function showGeneratingScreen() {
-    document.querySelector(".existing-recap").classList.add("hidden");
-    document.querySelector(".actual-recap").classList.add("hidden");
-    document.querySelector(".generating-recap").classList.remove("hidden");
-}
-
-// Update status text
-function updateStatus(message) {
-    const statusEl = document.getElementById("status");
-    if (statusEl) {
-        statusEl.textContent = message;
-    }
 }
 
 // Load completed recap from server

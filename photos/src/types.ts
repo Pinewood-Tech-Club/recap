@@ -24,3 +24,21 @@ export interface Person {
   display_name?: string
   count: number
 }
+
+export type PhotoSource = Photo['source']
+
+export type SortMode =
+  | 'default'
+  | 'most-faces'
+  | 'fewest-faces'
+  | 'source'
+  | 'album-spread'
+  | 'shuffle'
+
+export type PeopleMode = 'any' | 'all'
+
+export type FacePresence = 'any' | 'with' | 'without'
+
+export type SlideshowTransition = 'none' | 'dissolve' | 'slide'
+
+export type SlideshowFit = 'contain' | 'cover'

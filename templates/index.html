@@ -9,12 +9,17 @@
   <div class="card">
     <h1>Schoology Recap</h1>
     <h2>Presented by the <span style="color: var(--accent); font-weight: 700;">Pinewood Tech Club</span></h2>
-    {% if recap_id %}
-    <br />
-      <h2>Hi {{ user_name }}! Dive back in?</h2>
-      <a class="button" href="/recap/{{ recap_id }}">View Your Recap</a>
-      <p style="font-size: 10pt">Not you? <a href="/auth/logout">Log Out</a> or <a href="/terms">View Terms</a>.</p>
-    {% else %}
+	    {% if recap_id %}
+	      <br />
+	      <h2>Hi {{ user_name }}! Dive back in?</h2>
+	      <a class="button" href="/recap/{{ recap_id }}">View Your Recap</a>
+	      <p style="font-size: 10pt">Not you? <a href="/auth/logout">Log Out</a> or <a href="/terms">View Terms</a>.</p>
+	      <script>
+	        window.RECAP_STATUS_ID = {{ recap_id | tojson }};
+	        window.RECAP_READY = {{ recap_ready | tojson }};
+	      </script>
+	      <script src="{{ url_for('static', filename='js/index_status.js') }}"></script>
+	    {% else %}
       <p>Click below and sign in with your Pinewood Schoology account to get a summary of your academic achievements.</p>
       <a class="button disabled" onclick="btnClick()">Sign in with Schoology</a>
       <p><input type="checkbox" id="terms-checkbox" />

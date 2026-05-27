@@ -22,5 +22,5 @@ COPY . .
 
 EXPOSE 5002
 
-# Use gevent worker to support WebSockets and keep single worker for SQLite.
+# Use a single worker for SQLite and in-memory websocket subscribers.
 CMD ["gunicorn", "-b", "0.0.0.0:5002", "-w", "1", "-k", "gevent", "--access-logfile", "-", "--error-logfile", "-", "--capture-output", "--log-level", "info", "app:app"]

@@ -1,0 +1,200 @@
+{
+  "fall": [
+    {
+      "name": "Cross Country",
+      "members": [
+        "26aparenti",
+        "27awatanabe",
+        "28bbowman",
+        "28cfung",
+        "26ehoffman",
+        "28hkent",
+        "26jhollenbeck",
+        "26jyan",
+        "28kchhaparwal",
+        "29kfikes",
+        "28rchhaparwal",
+        "29sfriedland",
+        "28stsyganskiy",
+        "28tbajikar"
+      ]
+    },
+    {
+      "name": "Girls Flag Football",
+      "members": [
+        "28nweissman",
+        "29sbowles",
+        "28eagnich",
+        "28akrishnan",
+        "29bscott",
+        "28ayew",
+        "29atseng",
+        "28namezcua",
+        "28eososki",
+        "26ahall",
+        "29shaun",
+        "28sparenti"
+      ]
+    },
+    {
+      "name": "Girls Volleyball",
+      "members": [
+        "26cyamaguchi",
+        "26aupadhyaywessel",
+        "28aleeseyon",
+        "27ceaton",
+        "27gyoung",
+        "27ssaibi",
+        "26zdetrick",
+        "27rseiber",
+        "29awang",
+        "29jzhao",
+        "29cchou",
+        "26mwang"
+      ]
+    },
+    {
+      "name": "Football",
+      "members": [
+        "26bcui",
+        "26adhawan",
+        "26zsaberi",
+        "28apak",
+        "26askelley",
+        "26jreynders",
+        "27kge",
+        "26jtian",
+        "26dgupta",
+        "27lneri",
+        "28oborau",
+        "28nbradley"
+      ]
+    },
+    {
+      "name": "Girls Tennis",
+      "members": [
+        "28abyun",
+        "29aagarwal",
+        "27cshtrom",
+        "27dsmith",
+        "28ekim",
+        "27jlee",
+        "26lparikh",
+        "29rluh"
+      ]
+    }
+  ],
+  "winter": [
+    {
+      "name": "Boys Soccer",
+      "members": [
+        "27whewlett",
+        "29ewong",
+        "28msokoloff",
+        "27agoel",
+        "26jyan",
+        "27aryabhaskar",
+        "26hyang",
+        "27kpatel",
+        "28dbuyukkokten",
+        "27abhaskar",
+        "29jporterschulz",
+        "27awatanabe",
+        "26jreynders",
+        "27nbirman",
+        "27iofa",
+        "27abunanta"
+      ]
+    },
+    {
+      "name": "Girls Soccer",
+      "members": [
+        "27tau",
+        "28nweissman",
+        "26aparenti",
+        "29shaun",
+        "29hkaufmann",
+        "29adongnguyen",
+        "29cau",
+        "28namezcua",
+        "26ahall",
+        "27cshtrom",
+        "28eagnich",
+        "29snegrette",
+        "29ghewlett"
+      ]
+    },
+    {
+      "name": "Boys Basketball",
+      "members": [
+        "28vsatpute",
+        "27lneri",
+        "26bkimura",
+        "28tfacelo",
+        "26jtian",
+        "29wschluchter",
+        "27kge",
+        "29mpickett",
+        "27aganev",
+        "28sxu",
+        "28carcangel",
+        "26dgupta",
+        "28sbirch",
+        "28eskelley",
+        "27kislamov"
+      ]
+    },
+    {
+      "name": "Girls Basketball",
+      "members": [
+        "28akrishnan",
+        "26ckramer",
+        "28sparenti",
+        "28ayew",
+        "29sbowles",
+        "29bscott",
+        "29atseng",
+        "28eososki",
+        "27ddharmashankar",
+        "26awilkinson"
+      ]
+    }
+  ],
+  "spring": [
+    {
+      "name": "Boys Tennis",
+      "members": [
+        "27axie",
+        "27abunanta",
+        "27avaidya",
+        "28apak",
+        "26ihsiao",
+        "27iofa",
+        "26jhollenbeck",
+        "28kchhaparwal",
+        "28oborau",
+        "28rchhaparwal",
+        "28sbirch",
+        "28tbajikar",
+        "27ywang"
+      ]
+    },
+    {
+      "name": "Boys Baseball",
+      "members": [
+        "26zsaberi",
+        "28eskelley",
+        "26jreynders",
+        "26askelley",
+        "26bcui",
+        "28xschlough",
+        "26tkoo",
+        "27kpatel",
+        "26jananth",
+        "26adhawan",
+        "26jtian",
+        "28nbradley"
+      ]
+    }
+  ]
+}

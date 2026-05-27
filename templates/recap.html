@@ -128,17 +128,56 @@
               <div class="gh-contr-graph-info" id="s2-graph-info">
                 <p>Click/tap/drag on graph to view more info about a day</p>
               </div>
+              <div class="nc-sizer" id="s3-streak-wrap" style="opacity:0">
+                <p class="for2stat2 bare-reveal-text">
+                  <span id="s3-streak-pre"></span><b class="val-primary" id="s3-streak-val"></b><span id="s3-streak-days"></span><span id="s3-streak-from-label"></span><b class="val-secondary" id="s3-streak-from"></b><span id="s3-streak-to-label"></span><b class="val-secondary" id="s3-streak-to"></b><span id="s3-streak-post"></span>
+                </p>
+              </div>
             </div>
           </div>
         </div>
-        <div id="slide4" class="slide-base" style="display: none"></div>
+        <div id="slide4" class="slide-base" style="display: none">
+          <div class="s2cont">
+            <div>
+              <div class="nc-sizer">
+                <p class="for2subtxt bare-reveal-text">
+                  <span id="s4-intro"></span><b class="val-primary" id="s4-peak-hour"></b>
+                </p>
+              </div>
+              <div class="nc-sizer">
+                <p class="for2stat2 bare-reveal-text">
+                  <span id="s4-late-intro"></span><b class="val-primary" id="s4-late-count"></b><span id="s4-late-mid"></span><b class="val-secondary" id="s4-late-pct"></b><span id="s4-late-outro"></span>
+                </p>
+              </div>
+              <div class="s4-chart-outer" id="s4-chart-wrap" style="opacity:0; transform:translateY(6vh)">
+                <div class="s4-bars" id="s4-bars"></div>
+                <div class="s4-axis">
+                  <span>12 AM</span>
+                  <span>6 AM</span>
+                  <span>12 PM</span>
+                  <span>6 PM</span>
+                  <span></span>
+                </div>
+              </div>
+              <div class="s4-chart-info" id="s4-chart-info">
+                <p>Tap/drag bars to view more info about an hour</p>
+              </div>
+              <div class="nc-sizer" id="s4-avg-wrap" style="opacity:0">
+                <p class="for2stat2 bare-reveal-text">
+                  <span id="s4-avg-pre"></span><b class="val-primary" id="s4-avg-val"></b><span id="s4-avg-post"></span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </body>
   <script>
     const RECAP_ID = {{ recap_id | tojson }};
-    const IS_GENERATING = {{ is_generating | tojson }};
+    const GALLERY_NAME = {{ gallery_name | tojson }};
   </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://unpkg.com/html-to-image@1.11.11/dist/html-to-image.js"></script>
   <script src="{{ url_for('static', filename='js/recap.js') }}"></script>
 </html>

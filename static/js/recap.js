@@ -12,17 +12,22 @@ let slide2Gen = 0;
 let slide3Snap = false;
 let slide3Animating = false;
 let slide3Gen = 0;
+let slide4Snap = false;
+let slide4Animating = false;
+let slide4Gen = 0;
 
 const slide_on_enter = {
     slide1: () => { reset_slide1(); make_title_animate(); },
     slide2: () => { reset_slide2(); animate_slide2(); },
     slide3: () => { reset_slide3(); animate_slide3(); },
+    slide4: () => { reset_slide4(); animate_slide4(); },
 };
 
 const slide_on_exit = {
     slide1: () => { slide1Snap = false; slide1Animating = false; _slide1Timeouts.forEach(t => clearTimeout(t)); _slide1Timeouts = []; },
     slide2: () => { slide2Gen++; slide2Snap = false; slide2Animating = false; },
     slide3: () => { slide3Gen++; slide3Snap = false; slide3Animating = false; },
+    slide4: () => { slide4Gen++; slide4Snap = false; slide4Animating = false; },
 };
 
 function go_to_slide(index) {
@@ -151,6 +156,7 @@ function isAnimating() {
     if (id === 'slide1') return slide1Animating;
     if (id === 'slide2') return slide2Animating;
     if (id === 'slide3') return slide3Animating;
+    if (id === 'slide4') return slide4Animating;
     return false;
 }
 function snapCurrent() {
@@ -158,6 +164,7 @@ function snapCurrent() {
     if (id === 'slide1') snap_slide1();
     if (id === 'slide2') slide2Snap = true;
     if (id === 'slide3') slide3Snap = true;
+    if (id === 'slide4') slide4Snap = true;
 }
 function forward()  { if (isAnimating()) { snapCurrent(); } else { next_slide(); } }
 function backward() { if (isAnimating()) { snapCurrent(); } else { prev_slide(); } }
@@ -371,6 +378,11 @@ function buildContribGraph(container, dailyCounts, mode) {
     container.appendChild(grid);
 }
 
+function fmtStreakDate(iso) {
+    const [, m, d] = iso.split('-').map(Number);
+    return `${m}/${d}`;
+}
+
 function epochToPSTDate(epochSec) {
     return new Date(epochSec * 1000)
         .toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
@@ -400,6 +412,7 @@ const RANGE_END   = '2026-05-19';
 function computeRecapStats(raw) {
     const dailyCounts = {};
     const monthCounts = {};
+    const hourlyCounts = new Array(24).fill(0);
     let total = 0;
     for (const course of raw.assignments || []) {
         for (const ev of course.data || []) {
@@ -411,6 +424,8 @@ function computeRecapStats(raw) {
             const monthIdx = parseInt(dateKey.slice(5, 7), 10) - 1;
             const monthName = _MONTH_NAMES[monthIdx];
             monthCounts[monthName] = (monthCounts[monthName] || 0) + 1;
+            const hour = epochToPSTHour(t) % 24;
+            hourlyCounts[hour]++;
         }
     }
 
@@ -431,6 +446,46 @@ function computeRecapStats(raw) {
         const d = parseInt(busiest_day_key.slice(8, 10), 10);
         busiest_day = `${m}/${d}`;
     }
+
+    let totalSecBeforeDue = 0;
+    let dueCount = 0;
+    for (const course of raw.assignments || []) {
+        for (const ev of course.data || []) {
+            const dateKey = epochToPSTDate(ev.t);
+            if (dateKey < RANGE_START || dateKey > RANGE_END) continue;
+            if (ev.due) {
+                totalSecBeforeDue += ev.due - ev.t;
+                dueCount++;
+            }
+        }
+    }
+    const avg_sec_before_due = dueCount > 0 ? Math.round(totalSecBeforeDue / dueCount) : null;
+
+    // Longest consecutive streak of days with at least one submission
+    let streak = 0, streakStart = '', streakEnd = '';
+    {
+        let cur = 0, curStart = '';
+        for (let d = new Date(RANGE_START + 'T12:00:00Z'); ; d.setUTCDate(d.getUTCDate() + 1)) {
+            const key = d.toISOString().slice(0, 10);
+            if (key > RANGE_END) break;
+            if (dailyCounts[key]) {
+                if (cur === 0) curStart = key;
+                cur++;
+                if (cur > streak) { streak = cur; streakStart = curStart; streakEnd = key; }
+            } else {
+                cur = 0; curStart = '';
+            }
+        }
+    }
+
+    let peak_hour = 0;
+    for (let h = 1; h < 24; h++) {
+        if (hourlyCounts[h] > hourlyCounts[peak_hour]) peak_hour = h;
+    }
+    const late_count = hourlyCounts[22] + hourlyCounts[23]
+        + hourlyCounts[0] + hourlyCounts[1] + hourlyCounts[2]
+        + hourlyCounts[3] + hourlyCounts[4] + hourlyCounts[5];
+    const late_pct = total > 0 ? Math.round(late_count / total * 100) : 0;
 
     const top_courses = raw.mode === 'student'
         ? Object.entries(
@@ -456,13 +511,85 @@ function computeRecapStats(raw) {
         dailyCounts,
         top_courses,
         top_slow_graded: raw.top_slow_graded || [],
+        peak_hour,
+        late_count,
+        late_pct,
+        hourlyCounts,
+        streak,
+        streakStart,
+        streakEnd,
+        avg_sec_before_due,
     };
+}
+
+const _ROBOTICS_LOGO_HTML = `<!doctypehtml><style>body{margin:0}svg{display:block;width:100vw;height:100vh}.draw{fill:none;stroke:#70ce35;stroke-linecap:round;stroke-miterlimit:10}</style><body><svg style=visibility:hidden viewBox="0 0 116.21 155.5"><g><path class=draw d=M91.63,61.53c9.58,8.96,15.57,21.72,15.57,35.87c0,27.12,-21.98,49.1,-49.1,49.1c-27.12,0,-49.1,-21.98,-49.1,-49.1c0,-14.15,5.99,-26.91,15.57,-35.87 id=U /><line class=draw id=I x1=58.1 x2=58.1 y1=97.4 y2=9 /><line class=draw id=L x1=58.1 x2=84.16 y1=9 y2=35.06 /><line class=draw id=J x1=58.1 x2=32.04 y1=9 y2=35.06 /></g></svg><script src=https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js></script><script>let p=new URLSearchParams(location.search),S=+(p.get("s")||1),bg=p.get("bg"),q=t=>document.getElementById(t),U=q("U"),I=q("I"),L=q("L"),J=q("J"),LJ=[L,J],sw="stroke-width",at="attr",gl="getTotalLength";bg&&"none"!==bg&&(document.body.style.background="#"+bg),[U,I,L,J].forEach(t=>{var e=t[gl]();t.style.strokeDasharray=e,t.style.strokeDashoffset=e}),document.querySelector("svg").style.visibility="";let tl=gsap.timeline();gsap.set(LJ,{[at]:{[sw]:0}},0),tl.fromTo(U,{[at]:{[sw]:0}},{[at]:{[sw]:18},duration:.2/S,ease:"power2.out"},0),tl.to(U,{strokeDashoffset:0,duration:1.1/S,ease:"power3.out"},0),tl.fromTo(I,{[at]:{[sw]:0}},{[at]:{[sw]:18},duration:.2/S,ease:"power2.out"},.25/S),tl.to(I,{strokeDashoffset:0,duration:.5/S},.25/S),tl.set(LJ,{[at]:{[sw]:18}},.7/S),tl.to(LJ,{strokeDashoffset:0,duration:.6/S,ease:"power3.out"},.7/S)<\/script>`;
+const _ROBOTICS_LOGO_SRC = 'data:text/html;charset=utf-8,' + encodeURIComponent(_ROBOTICS_LOGO_HTML);
+
+function _playRoboticsLogo(idx) {
+    const iframe = document.getElementById(`rob-iframe-${idx}`);
+    if (!iframe) return;
+    iframe.src = _ROBOTICS_LOGO_SRC;
+}
+
+function _buildActivitySlides(activities) {
+    if (!activities || !activities.length) return;
+    const slidesContainer = document.querySelector('#main-recap-container .slides');
+    if (!slidesContainer) return;
+
+    const SEASON_LABELS = { fall: 'Fall', winter: 'Winter', spring: 'Spring' };
+
+    activities.forEach((act, i) => {
+        const d = act.dat;
+        const id = `slide-activity-${i}`;
+        const el = document.createElement('div');
+        el.id = id;
+        el.style.display = 'none';
+
+        const bgPos = d.face_pos ? `${d.face_pos.x}% ${d.face_pos.y}%` : 'center 30%';
+
+        if (act.type === 'sport') {
+            el.className = 'slide-base slide-activity' + (d.l_d === 'light' ? ' activity-light' : '');
+            const seasonLabel = SEASON_LABELS[d.season] || d.season;
+            el.innerHTML = `
+                <div class="activity-bg" style="background-image:url('${d.image_url}');background-position:${bgPos}"></div>
+                <div class="activity-gradient"></div>
+                <div class="activity-content">
+                    <p class="activity-category"><span class="activity-season-word activity-season-${d.season}">${seasonLabel}</span> Sport</p>
+                    <h1 class="activity-name">${d.sport}</h1>
+                </div>
+            `;
+        } else if (act.type === 'robotics') {
+            el.className = 'slide-base slide-activity';
+            el.innerHTML = `
+                <div class="activity-bg" style="background-image:url('${d.image_url}');background-position:${bgPos}"></div>
+                <div class="activity-gradient"></div>
+                <div class="activity-robotics-logo">
+                    <iframe id="rob-iframe-${i}" src="" style="width:100%;height:100%;border:none;background:transparent;" scrolling="no"></iframe>
+                </div>
+                <div class="activity-content">
+                    <p class="activity-robotics-quote">"Wait, Pinewood has a robotics team?"</p>
+                    <h1 class="activity-name">Robotics</h1>
+                </div>
+            `;
+
+            const logoIdx = i;
+            slide_on_enter[id] = () => _playRoboticsLogo(logoIdx);
+        } else {
+            return;
+        }
+
+        slidesContainer.appendChild(el);
+        slide_ids.push(id);
+        if (!slide_on_enter[id]) slide_on_enter[id] = () => {};
+        slide_on_exit[id]  = () => {};
+    });
 }
 
 async function initRecapData() {
     const resp = await fetch(`/api/recap/${RECAP_ID}`);
     const json = await resp.json();
     RECAP_DATA = computeRecapStats(json.slides);
+    _buildActivitySlides(json.slides.activities || []);
     _dataReadyResolve();
     const cgEl = document.getElementById('s2-graph');
     if (cgEl) {
@@ -907,6 +1034,71 @@ function attachGraphInteraction(container, mode) {
     container.addEventListener('touchend', () => { isDragging = false; }, { passive: true });
 }
 
+function attachBarInteraction(barsEl, mode) {
+    const verb = mode === 'teacher' ? 'graded' : 'submitted';
+    let isDragging = false;
+    let activeBar = null;
+
+    function selectBar(bar) {
+        if (!bar || !bar.dataset.hour) return;
+        if (activeBar) activeBar.classList.remove('s4-bar-active');
+        activeBar = bar;
+        bar.classList.add('s4-bar-active');
+        const h = parseInt(bar.dataset.hour);
+        const count = parseInt(bar.dataset.count || '0');
+        const infoEl = document.getElementById('s4-chart-info');
+        infoEl.querySelector('p').textContent =
+            `${formatHour(h)}: ${count} assignment${count !== 1 ? 's' : ''} ${verb}`;
+    }
+
+    function barFromPoint(x, y) {
+        const el = document.elementFromPoint(x, y);
+        if (el && el.dataset.hour !== undefined) return el;
+        const rect = barsEl.getBoundingClientRect();
+        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+        let nearest = null, nearestDist = Infinity;
+        for (const bar of barsEl.querySelectorAll('.s4-bar[data-hour]')) {
+            const r = bar.getBoundingClientRect();
+            const cx = r.left + r.width / 2;
+            const dist = Math.abs(x - cx);
+            if (dist < nearestDist) { nearestDist = dist; nearest = bar; }
+        }
+        return nearest;
+    }
+
+    barsEl.addEventListener('mousedown', (e) => {
+        const bar = e.target.closest('.s4-bar');
+        if (!bar) return;
+        e.preventDefault();
+        isDragging = true;
+        selectBar(bar);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        selectBar(barFromPoint(e.clientX, e.clientY));
+    });
+
+    document.addEventListener('mouseup', () => { isDragging = false; });
+
+    barsEl.addEventListener('touchstart', (e) => {
+        const t = e.touches[0];
+        const bar = barFromPoint(t.clientX, t.clientY);
+        if (!bar) return;
+        _suppressSwipe = true;
+        isDragging = true;
+        selectBar(bar);
+    }, { passive: true });
+
+    barsEl.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        const t = e.touches[0];
+        selectBar(barFromPoint(t.clientX, t.clientY));
+    }, { passive: true });
+
+    barsEl.addEventListener('touchend', () => { isDragging = false; }, { passive: true });
+}
+
 // ── Slide 3 ───────────────────────────────────────────────────────────────────
 
 function reset_slide3() {
@@ -919,8 +1111,12 @@ function reset_slide3() {
     graphInfo.style.transition = '';
     graphInfo.style.opacity = '0';
     graphInfo.querySelector('p').textContent = 'Click/tap/drag on graph to view more info about a day';
+    const streakWrap = document.getElementById('s3-streak-wrap');
+    streakWrap.style.transition = '';
+    streakWrap.style.opacity = '0';
     ['s2-m-intro','s2-month-name','s2-m-mid','s2-month-count','s2-m-outro',
-     's2-d-intro','s2-day-name','s2-d-mid','s2-day-count','s2-d-outro'].forEach(id => {
+     's2-d-intro','s2-day-name','s2-d-mid','s2-day-count','s2-d-outro',
+     's3-streak-pre','s3-streak-val','s3-streak-days','s3-streak-from-label','s3-streak-from','s3-streak-to-label','s3-streak-to','s3-streak-post'].forEach(id => {
         document.getElementById(id).textContent = '';
     });
 }
@@ -975,31 +1171,262 @@ async function animate_slide3() {
     graph.style.animation = 'graph-rise 0.7s ease both';
     await delay(700, alive, snap);
     const graphInfo = document.getElementById('s2-graph-info');
+    const hasRange = !!(d.streakStart && d.streakEnd);
+    function _fillStreak(instantEl) {
+        document.getElementById('s3-streak-pre').textContent = 'Your longest streak was ';
+        document.getElementById('s3-streak-val').textContent = d.streak;
+        document.getElementById('s3-streak-days').textContent = ` day${d.streak !== 1 ? 's' : ''}`;
+        document.getElementById('s3-streak-from-label').textContent = hasRange ? ', from ' : '';
+        document.getElementById('s3-streak-from').textContent = hasRange ? fmtStreakDate(d.streakStart) : '';
+        document.getElementById('s3-streak-to-label').textContent = hasRange ? ' to ' : '';
+        document.getElementById('s3-streak-to').textContent = hasRange ? fmtStreakDate(d.streakEnd) : '';
+        document.getElementById('s3-streak-post').textContent = '.';
+        if (instantEl) { instantEl.style.transition = 'none'; instantEl.style.opacity = '1'; }
+    }
+
     if (snap()) {
         graph.style.animation = 'none'; graph.style.opacity = '1'; graph.style.transform = 'translateY(0)';
         graphInfo.style.transition = 'none';
         graphInfo.style.opacity = '1';
+        _fillStreak(document.getElementById('s3-streak-wrap'));
     }
 
     if (!alive()) { slide3Animating = false; return; }
     graphInfo.style.opacity = '1';
 
+    await delay(400, alive, snap);
+    if (!alive()) { slide3Animating = false; return; }
+
+    const streakWrap = document.getElementById('s3-streak-wrap');
+    if (snap()) {
+        _fillStreak(streakWrap);
+    } else {
+        streakWrap.style.opacity = '1';
+        await typewriter(document.getElementById('s3-streak-pre'), 'Your longest streak was ', 30, null, alive, snap);
+        if (!alive()) { slide3Animating = false; return; }
+        await countUp(document.getElementById('s3-streak-val'), 0, d.streak, 700, null, alive, snap);
+        if (!alive()) { slide3Animating = false; return; }
+        await typewriter(document.getElementById('s3-streak-days'), ` day${d.streak !== 1 ? 's' : ''}`, 40, null, alive, snap);
+        if (!alive()) { slide3Animating = false; return; }
+        if (hasRange) {
+            await typewriter(document.getElementById('s3-streak-from-label'), ', from ', 30, null, alive, snap);
+            if (!alive()) { slide3Animating = false; return; }
+            scrollReveal(document.getElementById('s3-streak-from'), dateCountUpOptions(fmtStreakDate(d.streakStart)), fmtStreakDate(d.streakStart), 800, null, alive, snap);
+            await delay(900, alive, snap);
+            if (!alive()) { slide3Animating = false; return; }
+            await typewriter(document.getElementById('s3-streak-to-label'), ' to ', 40, null, alive, snap);
+            if (!alive()) { slide3Animating = false; return; }
+            scrollReveal(document.getElementById('s3-streak-to'), dateCountUpOptions(fmtStreakDate(d.streakEnd)), fmtStreakDate(d.streakEnd), 800, null, alive, snap);
+            await delay(900, alive, snap);
+            if (!alive()) { slide3Animating = false; return; }
+        }
+        await typewriter(document.getElementById('s3-streak-post'), '.', 30, null, alive, snap);
+    }
+
     slide3Animating = false;
+}
+
+// ── Slide 4 ───────────────────────────────────────────────────────────────────
+
+function formatHour(h) {
+    if (h === 0) return '12 AM';
+    if (h < 12) return `${h} AM`;
+    if (h === 12) return '12 PM';
+    return `${h - 12} PM`;
+}
+
+function hourScrollOptions(targetHour, n = 12) {
+    const options = [];
+    for (let i = n; i >= 1; i--) {
+        options.push(formatHour((targetHour - i + 24) % 24));
+    }
+    return options;
+}
+
+function buildHourChart(barsEl, hourlyCounts, peakHour) {
+    barsEl.innerHTML = '';
+    const maxCount = Math.max(...hourlyCounts, 1);
+    for (let h = 0; h < 24; h++) {
+        const bar = document.createElement('div');
+        const pct = (hourlyCounts[h] / maxCount * 100).toFixed(2);
+        const level = hourlyCounts[h] === 0 ? 0 : Math.max(1, Math.ceil(hourlyCounts[h] / maxCount * 4));
+        bar.className = `s4-bar s4-bar-l${level}` + (h === peakHour ? ' s4-bar-peak' : '');
+        bar.dataset.targetPct = pct;
+        bar.dataset.hour = h;
+        bar.dataset.count = hourlyCounts[h];
+        bar.style.height = '0%';
+        bar.title = `${formatHour(h)}: ${hourlyCounts[h]}`;
+        barsEl.appendChild(bar);
+    }
+}
+
+function animateBars(barsEl, alive, snapFn) {
+    const bars = [...barsEl.querySelectorAll('.s4-bar')];
+    if (!bars.length) return Promise.resolve();
+    const targets = bars.map(b => parseFloat(b.dataset.targetPct || '0'));
+    const DURATION = 900;
+    if (snapFn()) { bars.forEach((b, i) => { b.style.height = `${targets[i]}%`; }); return Promise.resolve(); }
+    return new Promise(resolve => {
+        const startTime = Date.now();
+        const step = () => {
+            if (!alive()) { resolve(); return; }
+            if (snapFn()) { bars.forEach((b, i) => { b.style.height = `${targets[i]}%`; }); resolve(); return; }
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / DURATION, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            bars.forEach((b, i) => { b.style.height = `${targets[i] * eased}%`; });
+            if (progress < 1) requestAnimationFrame(step);
+            else { bars.forEach((b, i) => { b.style.height = `${targets[i]}%`; }); resolve(); }
+        };
+        requestAnimationFrame(step);
+    });
+}
+
+function reset_slide4() {
+    slide4Gen++;
+    ['s4-intro', 's4-peak-hour', 's4-late-intro', 's4-late-count',
+     's4-late-mid', 's4-late-pct', 's4-late-outro',
+     's4-avg-pre', 's4-avg-val', 's4-avg-post'].forEach(id => {
+        document.getElementById(id).textContent = '';
+    });
+    const chartWrap = document.getElementById('s4-chart-wrap');
+    chartWrap.style.animation = 'none';
+    chartWrap.style.opacity = '0';
+    chartWrap.style.transform = 'translateY(6vh)';
+    const barsEl = document.getElementById('s4-bars');
+    if (barsEl) barsEl.innerHTML = '';
+    const chartInfo = document.getElementById('s4-chart-info');
+    chartInfo.style.transition = '';
+    chartInfo.style.opacity = '0';
+    chartInfo.querySelector('p').textContent = 'Tap/drag bars to view more info about an hour';
+    const avgWrap = document.getElementById('s4-avg-wrap');
+    avgWrap.style.transition = '';
+    avgWrap.style.opacity = '0';
+}
+
+async function animate_slide4() {
+    slide4Animating = true;
+    slide4Snap = false;
+    const myGen = slide4Gen;
+    if (!RECAP_DATA) await dataReady;
+    if (slide4Gen !== myGen) { slide4Animating = false; return; }
+    const d = RECAP_DATA;
+    const snap = () => slide4Snap;
+    const alive = () => slide4Gen === myGen;
+
+    if (!alive()) { slide4Animating = false; return; }
+    const introText = d.mode === 'teacher' ? 'You grade most at ' : 'You\'re most active at ';
+    await typewriter(document.getElementById('s4-intro'), introText, 35, null, alive, snap);
+
+    if (!alive()) { slide4Animating = false; return; }
+    scrollReveal(document.getElementById('s4-peak-hour'), hourScrollOptions(d.peak_hour), formatHour(d.peak_hour), 900, null, alive, snap);
+    await delay(1100, alive, snap);
+
+    if (!alive()) { slide4Animating = false; return; }
+    const lateIntro = d.mode === 'teacher' ? 'You returned ' : 'You submitted ';
+    await typewriter(document.getElementById('s4-late-intro'), lateIntro, 35, null, alive, snap);
+
+    if (!alive()) { slide4Animating = false; return; }
+    countUp(document.getElementById('s4-late-count'), 0, d.late_count, 800, null, alive, snap);
+    await delay(250, alive, snap);
+
+    if (!alive()) { slide4Animating = false; return; }
+    const lateMid = d.mode === 'teacher' ? ' grades past 10 PM, which is ' : ' assignments past 10 PM, which is ';
+    await typewriter(document.getElementById('s4-late-mid'), lateMid, 30, null, alive, snap);
+
+    if (!alive()) { slide4Animating = false; return; }
+    const pctEl = document.getElementById('s4-late-pct');
+    const pctPromise = countUp(pctEl, 0, d.late_pct, 600, null, alive, snap);
+    await delay(100, alive, snap);
+
+    if (!alive()) { slide4Animating = false; return; }
+    const lateOutro = d.mode === 'teacher' ? ' of your grades.' : ' of your assignments.';
+    await typewriter(document.getElementById('s4-late-outro'), lateOutro, 30, null, alive, snap);
+
+    await pctPromise;
+    if (!alive()) { slide4Animating = false; return; }
+    pctEl.textContent = `${d.late_pct}%`;
+
+    if (!alive()) { slide4Animating = false; return; }
+    await delay(300, alive, snap);
+
+    const barsEl = document.getElementById('s4-bars');
+    buildHourChart(barsEl, d.hourlyCounts, d.peak_hour);
+    attachBarInteraction(barsEl, d.mode);
+
+    const chartWrap = document.getElementById('s4-chart-wrap');
+    chartWrap.style.opacity = '';
+    chartWrap.style.transform = '';
+    void chartWrap.offsetHeight;
+    chartWrap.style.animation = 'graph-rise 0.6s ease both';
+    await delay(400, alive, snap);
+    if (snap()) {
+        chartWrap.style.animation = 'none';
+        chartWrap.style.opacity = '1';
+        chartWrap.style.transform = 'translateY(0)';
+    }
+
+    if (!alive()) { slide4Animating = false; return; }
+    await animateBars(barsEl, alive, snap);
+
+    if (!alive()) { slide4Animating = false; return; }
+
+    const chartInfo = document.getElementById('s4-chart-info');
+    if (snap()) {
+        chartInfo.style.transition = 'none';
+        chartInfo.style.opacity = '1';
+    } else {
+        chartInfo.style.opacity = '1';
+    }
+
+    await delay(300, alive, snap);
+    if (!alive()) { slide4Animating = false; return; }
+
+    // Avg time before due stat (students only)
+    const avgWrap = document.getElementById('s4-avg-wrap');
+    const avgPre = document.getElementById('s4-avg-pre');
+    const avgVal = document.getElementById('s4-avg-val');
+    const avgPost = document.getElementById('s4-avg-post');
+    if (d.mode === 'student' && d.avg_sec_before_due !== null) {
+        const sec = d.avg_sec_before_due;
+        const early = sec >= 0;
+        const absSec = Math.abs(sec);
+        let valText, postText;
+        if (absSec < 3600) {
+            valText = 'less than an hour';
+            postText = early ? ' before the deadline on average.' : ' past the deadline on average.';
+        } else if (absSec < 86400) {
+            const hrs = Math.round(absSec / 3600);
+            valText = `${hrs} hour${hrs !== 1 ? 's' : ''}`;
+            postText = early ? ' before the deadline on average.' : ' past the deadline on average.';
+        } else {
+            const days = Math.round(absSec / 86400);
+            valText = `${days} day${days !== 1 ? 's' : ''}`;
+            postText = early ? ' before the deadline on average.' : ' past the deadline on average.';
+        }
+        const preText = early ? 'You submitted ' : 'You submitted ';
+        if (snap()) {
+            avgPre.textContent = preText;
+            avgVal.textContent = valText;
+            avgPost.textContent = postText;
+            avgWrap.style.transition = 'none';
+            avgWrap.style.opacity = '1';
+        } else {
+            avgWrap.style.opacity = '1';
+            await typewriter(avgPre, preText, 30, null, alive, snap);
+            if (!alive()) { slide4Animating = false; return; }
+            await typewriter(avgVal, valText, 35, null, alive, snap);
+            if (!alive()) { slide4Animating = false; return; }
+            await typewriter(avgPost, postText, 30, null, alive, snap);
+        }
+    }
+
+    slide4Animating = false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-if (IS_GENERATING) {
-    let _dataFetched = false;
-    const _fetchOnce = () => { if (!_dataFetched) { _dataFetched = true; initRecapData(); } };
-    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/job/${RECAP_ID}`);
-    ws.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
-        if (msg.status === 'done') { ws.close(); _fetchOnce(); }
-    };
-    ws.onerror = () => _fetchOnce();
-    ws.onclose = () => _fetchOnce();
-} else {
+if (RECAP_ID) {
     initRecapData();
 }
 
@@ -1016,8 +1443,24 @@ _updateDownloadBtn();
     const container = document.querySelector('.photos-album-selection-scroll');
     if (!container) return;
 
-    const res = await fetch('/photos/selection/26mwang.json');
-    const { photos } = await res.json();
+    let photos;
+    const selRes = await fetch(`/photos/selection/${GALLERY_NAME}.json`);
+    if (selRes.ok) {
+        ({ photos } = await selRes.json());
+    } else {
+        const idxRes = await fetch('/photos/selection/_index.json').catch(() => null);
+        if (idxRes && idxRes.ok) {
+            ({ photos } = await idxRes.json());
+        } else {
+            const allRes = await fetch('https://photos.recap.pinewood.one/index/photos.json');
+            const all = await allRes.json();
+            for (let i = all.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [all[i], all[j]] = [all[j], all[i]];
+            }
+            photos = all.slice(0, 50).map(p => ({ path: p.path, type: 'random' }));
+        }
+    }
 
     for (let i = photos.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));

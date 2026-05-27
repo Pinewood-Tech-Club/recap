@@ -4,9 +4,7 @@ Recap MVP server.
 Flow:
 - GET /            : Landing page with CTA to connect Schoology
 - GET /auth/start  : Begin three-legged OAuth
-- GET /auth/callback : Complete OAuth, queue recap job, redirect to /recap?id={uuid}
-- GET /recap       : Frontend shell that polls /api/job/{id} for recap data
-- GET /api/job/{id}: Job status + slides JSON
+- GET /auth/callback : Complete OAuth and return to index
 """
 
 import os
@@ -82,8 +80,9 @@ TWO_LEGGED_DEBUG = os.environ.get("TWO_LEGGED_DEBUG", "").lower() == "true"
 DEBUG_EMAIL = os.environ.get("DEBUG_EMAIL", "debug@example.com")
 VERBOSE_PROGRESS = os.environ.get("VERBOSE_PROGRESS", "").lower() == "true"
 
-# WebSocket subscriber registry: job_id -> list[queue.Queue]
 subscribers: dict[str, list[queue.Queue]] = {}
+subscribers_lock = threading.Lock()
+job_creation_lock = threading.Lock()
 
 if not SCHOOLOGY_CONSUMER_KEY or not SCHOOLOGY_CONSUMER_SECRET:
     logger.warning("Schoology consumer key/secret missing; OAuth will fail.")
@@ -91,6 +90,26 @@ if not SCHOOLOGY_CONSUMER_KEY or not SCHOOLOGY_CONSUMER_SECRET:
 with open(os.path.join(os.path.dirname(__file__), "pinewood_roles.json")) as f:
     _role_data = json.load(f)
 FACULTY_ROLE_IDS = {r["id"] for r in _role_data["role"] if r["faculty"] == 1}
+
+with open(os.path.join(os.path.dirname(__file__), "sports.json")) as f:
+    _sports_data = json.load(f)
+
+# Maps sport name (from sports.json) -> categories.json slug(s) to pull albums from
+_SPORT_SLUG_MAP: dict[str, list[str]] = {
+    "Cross Country":       ["sports/cross-country"],
+    "Girls Flag Football": ["sports/football/girls-flag"],
+    "Girls Volleyball":    ["sports/volleyball/girls"],
+    "Football":            ["sports/football/boys"],
+    "Girls Tennis":        ["sports/tennis/girls"],
+    "Boys Soccer":         ["sports/soccer/boys"],
+    "Girls Soccer":        ["sports/soccer/girls"],
+    "Boys Basketball":     ["sports/basketball/boys"],
+    "Girls Basketball":    ["sports/basketball/girls"],
+    "Boys Tennis":         ["sports/tennis/boys"],
+    "Boys Baseball":       ["sports/baseball"],
+}
+
+_ROBOTICS_SLUGS = ["robotics/sf-district", "robotics/cv-district", "robotics/misc"]
 
 # Initialize databases ---------------------------------------------------
 def init_recap_db():
@@ -137,6 +156,18 @@ init_recap_db()
 # Database helper functions -------------------------------------------------
 def get_conn():
     return sqlite3.connect(JOB_DB_PATH, check_same_thread=False)
+
+
+def requeue_interrupted_jobs():
+    """Recover jobs left running by a stopped server process."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE jobs SET status = 'queued' WHERE status = 'running'")
+    count = cur.rowcount
+    conn.commit()
+    conn.close()
+    if count:
+        logger.info("Requeued %d interrupted recap job(s)", count)
 
 
 # Recap operations (permanent storage)
@@ -264,6 +295,38 @@ def get_job_by_email(email):
     }
 
 
+def list_active_jobs():
+    """List queued/running jobs in user-facing queue order."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, email, status, progress_json, created_at
+        FROM jobs
+        WHERE status IN ('running', 'queued')
+        ORDER BY
+            CASE status WHEN 'running' THEN 0 ELSE 1 END,
+            created_at ASC
+        """
+    )
+    rows = cur.fetchall()
+    conn.close()
+    jobs = []
+    for row in rows:
+        try:
+            progress = json.loads(row[3]) if row[3] else None
+        except json.JSONDecodeError:
+            progress = None
+        jobs.append({
+            "id": row[0],
+            "email": row[1],
+            "status": row[2],
+            "progress": progress,
+            "created_at": row[4],
+        })
+    return jobs
+
+
 def update_job_progress(job_id, progress):
     """Update job progress."""
     conn = get_conn()
@@ -323,14 +386,160 @@ def claim_next_job():
 
 
 def notify_progress(job_id: str, payload: dict):
-    """Notify WebSocket subscribers and persist progress."""
-    # Push to subscribers
-    subs = subscribers.get(job_id, [])
-    for q in subs:
-        q.put(payload)
-    # Update job progress (not status, since status is only queued/running)
+    """Persist the latest non-terminal job progress."""
     if payload.get("status") not in ["done", "error"]:
         update_job_progress(job_id, payload)
+    if payload.get("status") == "error":
+        message = {
+            "type": "job_status",
+            "recap_id": job_id,
+            "status": "error",
+            "queue_position": None,
+            "ahead_count": None,
+            "active_count": len(list_active_jobs()),
+            "percent": estimate_job_percent("error", payload),
+            "progress": payload,
+            "ready_url": None,
+        }
+    else:
+        message = get_job_status_snapshot(job_id)
+    broadcast_job_status(job_id, message)
+
+
+def ensure_background_recap_job(email, access_token, access_token_secret, two_legged=False):
+    """Start recap generation unless this email already has a recap or active job."""
+    if not email:
+        return None
+
+    with job_creation_lock:
+        existing_recap = get_recap_by_email(email)
+        if existing_recap and existing_recap.get("slides"):
+            session["recap_id"] = existing_recap["id"]
+            return existing_recap["id"]
+        active_job = get_job_by_email(email)
+        if active_job:
+            session["recap_id"] = active_job["id"]
+            return active_job["id"]
+
+        job_id = str(uuid.uuid4())
+        create_job(job_id, email, access_token, access_token_secret, two_legged=two_legged)
+        session["recap_id"] = job_id
+        logger.info("Queued background recap job %s for %s", job_id, email)
+        return job_id
+
+
+def estimate_job_percent(status, progress):
+    """Return rough generation progress as an integer percentage."""
+    if status == "done":
+        return 100
+    if status in ("error", "missing"):
+        return 0
+    if status == "queued":
+        return 0
+    if status != "running":
+        return 0
+
+    progress = progress or {}
+    if progress.get("message") == "Starting job":
+        return 5
+
+    stage = progress.get("stage")
+    stage_percent = {
+        "me": 10,
+        "sections": 15,
+        "enrollments": 25,
+        "assignments": 35,
+        "submissions": 65,
+        "grades": 70,
+        "activities": 85,
+    }
+    if stage == "assignment_batch":
+        count = progress.get("count")
+        total = progress.get("total")
+        if isinstance(count, (int, float)) and isinstance(total, (int, float)) and total > 0:
+            return min(55, 35 + round((count / total) * 20))
+        return 45
+    if stage in stage_percent:
+        return stage_percent[stage]
+    return 5
+
+
+def get_job_status_snapshot(job_id):
+    """Return the current websocket status payload for a recap/job id."""
+    active_jobs = list_active_jobs()
+    active_count = len(active_jobs)
+    for idx, job in enumerate(active_jobs):
+        if job["id"] == job_id:
+            return {
+                "type": "job_status",
+                "recap_id": job_id,
+                "status": job["status"],
+                "queue_position": idx + 1,
+                "ahead_count": idx,
+                "active_count": active_count,
+                "percent": estimate_job_percent(job["status"], job.get("progress")),
+                "progress": job.get("progress"),
+                "ready_url": None,
+            }
+
+    recap = get_recap_by_id(job_id)
+    if recap and recap.get("slides"):
+        return {
+            "type": "job_status",
+            "recap_id": job_id,
+            "status": "done",
+            "queue_position": None,
+            "ahead_count": 0,
+            "active_count": active_count,
+            "percent": 100,
+            "progress": None,
+            "ready_url": f"/recap/{job_id}",
+        }
+
+    return {
+        "type": "job_status",
+        "recap_id": job_id,
+        "status": "missing",
+        "queue_position": None,
+        "ahead_count": None,
+        "active_count": active_count,
+        "percent": 0,
+        "progress": None,
+        "ready_url": None,
+    }
+
+
+def subscribe_job(job_id, q):
+    with subscribers_lock:
+        subscribers.setdefault(job_id, []).append(q)
+
+
+def unsubscribe_job(job_id, q):
+    with subscribers_lock:
+        subs = subscribers.get(job_id)
+        if not subs:
+            return
+        if q in subs:
+            subs.remove(q)
+        if not subs:
+            subscribers.pop(job_id, None)
+
+
+def broadcast_job_status(job_id, message):
+    with subscribers_lock:
+        subs = list(subscribers.get(job_id, []))
+
+    stale = []
+    for q in subs:
+        try:
+            q.put_nowait(message)
+        except queue.Full:
+            stale.append(q)
+        except Exception:
+            stale.append(q)
+
+    for q in stale:
+        unsubscribe_job(job_id, q)
 
 
 def get_base_url():
@@ -462,10 +671,10 @@ def worker():
             )
             # Save to recaps table
             save_recap(job_id, job["email"], slides)
-            # Notify completion
-            notify_progress(job_id, {"status": "done", "slides": slides})
             # Delete job from queue (OAuth tokens deleted)
             delete_job(job_id)
+            # Notify completion after deletion so active_count excludes this job.
+            notify_progress(job_id, {"status": "done"})
             send_recap_email(job["email"], job_id)
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Job %s failed", job_id)
@@ -475,6 +684,7 @@ def worker():
             delete_job(job_id)
 
 
+requeue_interrupted_jobs()
 worker_thread = threading.Thread(target=worker, daemon=True)
 worker_thread.start()
 
@@ -1057,9 +1267,153 @@ def _build_student_assignments(auth, sections, assignments_by_section, latest_su
                     ts = int(parsed.replace(tzinfo=None).timestamp())
             if ts is None or ts <= 0:
                 continue
-            events.append({"t": ts})
+            due_raw = getattr(a, "due", None)
+            due_ts = None
+            if due_raw:
+                parsed_due = parse_dt(due_raw)
+                if parsed_due:
+                    due_ts = int(parsed_due.replace(tzinfo=None).timestamp())
+            events.append({"t": ts, "due": due_ts})
         course_list.append({"course": course_title, "data": events})
     return course_list
+
+
+def _analyze_image(image_url: str, bbox: list | None = None) -> dict:
+    """Fetch image once; return l_d and face_pos {x, y} as percentages."""
+    result = {"l_d": "dark", "face_pos": None}
+    try:
+        from PIL import Image
+        import io as _io
+        resp = requests.get(image_url, timeout=15)
+        resp.raise_for_status()
+        img = Image.open(_io.BytesIO(resp.content)).convert("L")
+        w, h = img.size
+        bottom = img.crop((0, int(h * 0.65), w, h))
+        pixels = list(bottom.getdata())
+        avg = sum(pixels) / (len(pixels) * 255)
+        result["l_d"] = "light" if avg > 0.5 else "dark"
+        if bbox and len(bbox) == 4 and w and h:
+            cx = (bbox[0] + bbox[2]) / 2
+            cy = (bbox[1] + bbox[3]) / 2
+            result["face_pos"] = {"x": round(cx / w * 100, 2), "y": round(cy / h * 100, 2)}
+    except Exception as exc:
+        logger.warning("_analyze_image failed for %s: %s", image_url, exc)
+    return result
+
+
+def _photos_for_slugs(slugs: list[str]) -> list[str]:
+    """Return all photo paths belonging to the given category slugs."""
+    slug_albums  = galleries_module.get_slug_albums()
+    album_photos = galleries_module.get_album_photos()
+    paths: list[str] = []
+    for slug in slugs:
+        for album in slug_albums.get(slug, []):
+            paths.extend(album_photos.get(album, []))
+    return paths
+
+
+def _best_photo_for_user(username: str, candidate_paths: list[str], member_set: set[str]) -> str | None:
+    """
+    Pick the best photo from candidate_paths for username.
+    Priority: fewest other identified faces → highest recognition score.
+    Fallback: photo with most member_set faces.
+    """
+    if not candidate_paths:
+        return None
+
+    photo_faces = galleries_module.get_photo_faces()
+    raw_meta    = galleries_module.get_raw_metadata()
+    path_set    = set(candidate_paths)
+
+    user_appearances = {
+        a["photo"]: a
+        for a in raw_meta.get(username, {}).get("appearances", [])
+        if a["photo"] in path_set
+    }
+
+    if user_appearances:
+        def _key(item):
+            path, app = item
+            other = len([n for n in photo_faces.get(path, []) if n != username])
+            return (other, -app.get("score", 0.0))
+        return min(user_appearances.items(), key=_key)[0]
+
+    # Fallback: most team-member faces
+    return max(candidate_paths, key=lambda p: sum(1 for n in photo_faces.get(p, []) if n in member_set), default=None)
+
+
+def _find_sport_photo(username: str, sport_name: str, sport_members: list[str]) -> str | None:
+    slugs = _SPORT_SLUG_MAP.get(sport_name)
+    if not slugs:
+        return None
+    paths = _photos_for_slugs(slugs)
+    return _best_photo_for_user(username, paths, set(sport_members))
+
+
+def _find_robotics_photo(username: str, all_members: list[str]) -> str | None:
+    paths = _photos_for_slugs(_ROBOTICS_SLUGS)
+    return _best_photo_for_user(username, paths, set(all_members))
+
+
+def _build_activities(username: str) -> list[dict]:
+    """Return activity slides for an HS student (grades 26-29), or []."""
+    import re
+    if not re.match(r"^(26|27|28|29)", username):
+        return []
+
+    if not galleries_module.wait_ready(timeout=30):
+        logger.warning("Galleries not ready; skipping activities for %s", username)
+        return []
+
+    activities = []
+    raw_meta = galleries_module.get_raw_metadata()
+
+    def _bbox_for(uname, path):
+        apps = {a["photo"]: a for a in raw_meta.get(uname, {}).get("appearances", [])}
+        a = apps.get(path)
+        return a.get("bbox") if a else None
+
+    # Sports
+    for season, sport_list in [("fall", _sports_data["fall"]),
+                                ("winter", _sports_data["winter"]),
+                                ("spring", _sports_data["spring"])]:
+        for sport in sport_list:
+            if username not in sport["members"]:
+                continue
+            photo_path = _find_sport_photo(username, sport["name"], sport["members"])
+            if not photo_path:
+                continue
+            image_url = f"{PHOTOS_BASE_URL}/{photo_path}"
+            analysis = _analyze_image(image_url, _bbox_for(username, photo_path))
+            activities.append({
+                "type": "sport",
+                "dat": {
+                    "season": season,
+                    "sport": sport["name"],
+                    "image_url": image_url,
+                    "l_d": analysis["l_d"],
+                    "face_pos": analysis["face_pos"],
+                },
+            })
+
+    # Robotics
+    with open(os.path.join(os.path.dirname(__file__), "robotics.json")) as _f:
+        _robotics = json.load(_f)
+    all_robotics_members = _robotics.get("members", []) + _robotics.get("kinda_members", [])
+    if username in all_robotics_members:
+        photo_path = _find_robotics_photo(username, all_robotics_members)
+        if photo_path:
+            image_url = f"{PHOTOS_BASE_URL}/{photo_path}"
+            analysis = _analyze_image(image_url, _bbox_for(username, photo_path))
+            activities.append({
+                "type": "robotics",
+                "dat": {
+                    "image_url": image_url,
+                    "face_pos": analysis["face_pos"],
+                },
+            })
+
+    return activities
 
 
 def build_recap(payload):
@@ -1145,12 +1499,15 @@ def build_recap(payload):
         assignments_by_section[sid] = [to_obj(a) for a in raw_assignments.get(str(sid), [])]
 
     # Push per-section assignment lists to clients for the debug/stream view
-    for section in sections:
+    total_sections = len(sections)
+    for idx, section in enumerate(sections, start=1):
         assigns = assignments_by_section[section.id]
         notify_progress(job_id, {
             "status": "running",
             "stage": "assignment_batch",
             "course": getattr(section, "course_title", "Unknown Course"),
+            "count": idx,
+            "total": total_sections,
             "assignments": [getattr(a, "title", f"Assignment {a.id}") for a in assigns],
         })
 
@@ -1178,10 +1535,16 @@ def build_recap(payload):
     logger.info("latest_submissions: %d entries", len(latest_submissions))
 
     course_list = _build_student_assignments(auth, sections, assignments_by_section, latest_submissions, job_id)
+
+    username = (user_email or "").split("@")[0]
+    notify_progress(job_id, {"status": "running", "stage": "activities"})
+    activities = _build_activities(username)
+
     return {
         "mode": "student",
         "user_name": schoology_user["name"],
         "assignments": course_list,
+        "activities": activities,
     }
 
 
@@ -1217,14 +1580,20 @@ def _pop_mobile_request_token(request_token: str) -> str | None:
 def index():
     recap_id = session.get("recap_id")
     user_name = None
+    recap_ready = False
     if recap_id:
         recap = get_recap_by_id(recap_id)
         if recap and recap.get("slides"):
             user_name = recap["slides"].get("user_name")
+            recap_ready = True
         else:
-            session.pop("recap_id", None)
-            recap_id = None
-    return render_template("index.html", user_name=user_name, recap_id=recap_id)
+            job = get_job(recap_id)
+            if job:
+                user_name = (job["email"] or "").split("@")[0]
+            else:
+                session.pop("recap_id", None)
+                recap_id = None
+    return render_template("index.html", user_name=user_name, recap_id=recap_id, recap_ready=recap_ready)
 
 
 @app.route("/auth/logout")
@@ -1242,7 +1611,13 @@ def auth_start():
         session["access_token"] = SCHOOLOGY_CONSUMER_KEY
         session["access_token_secret"] = SCHOOLOGY_CONSUMER_SECRET
         session["two_legged"] = True
-        return redirect("/recap")
+        ensure_background_recap_job(
+            DEBUG_EMAIL,
+            SCHOOLOGY_CONSUMER_KEY,
+            SCHOOLOGY_CONSUMER_SECRET,
+            two_legged=True,
+        )
+        return redirect("/")
 
     if not SCHOOLOGY_CONSUMER_KEY or not SCHOOLOGY_CONSUMER_SECRET:
         return "Missing Schoology API keys. Set SCHOOLOGY_CONSUMER_KEY/SECRET.", 500
@@ -1328,7 +1703,12 @@ def auth_activate_code():
     session["email"] = data["email"]
     session["access_token"] = data["access_token"]
     session["access_token_secret"] = data["access_token_secret"]
-    dest = "/?iosapp=1" if request.args.get("iosapp") == "1" else "/recap"
+    ensure_background_recap_job(
+        data["email"],
+        data["access_token"],
+        data["access_token_secret"],
+    )
+    dest = "/?iosapp=1" if request.args.get("iosapp") == "1" else "/"
     return redirect(dest)
 
 
@@ -1393,73 +1773,31 @@ def auth_callback():
     session["email"] = email
     session["access_token"] = access_token
     session["access_token_secret"] = access_token_secret
-    return redirect("/recap")
+    ensure_background_recap_job(email, access_token, access_token_secret)
+    return redirect("/")
 
 
 @app.route("/recap")
 def recap_index():
-    """Landing page for /recap - checks for existing recap or starts new job."""
-    email = session.get("email")
-    if not email:
-        return redirect("/")  # No auth, go to landing
-
-    # Check for existing completed recap
-    existing_recap = get_recap_by_email(email)
-
-    # Check for in-progress job
-    active_job = get_job_by_email(email)
-
-    if existing_recap and not active_job:
-        # Has completed recap, no job in progress - show existing screen
-        session["recap_id"] = existing_recap["id"]
-        return render_template("recap.html",
-                             recap_id=existing_recap["id"],
-                             email=email,
-                             share_image_url=get_share_image_url(existing_recap["id"]),
-                             show_existing=True,
-                             is_generating=False)
-    elif active_job:
-        # Job in progress - redirect to job URL
-        return redirect(f"/recap/{active_job['id']}")
-    else:
-        # No recap, no job - create new job and redirect
-        job_id = str(uuid.uuid4())
-        access_token = session.get("access_token")
-        access_token_secret = session.get("access_token_secret")
-        two_legged = session.get("two_legged", False)
-        create_job(job_id, email, access_token, access_token_secret, two_legged=two_legged)
-        return redirect(f"/recap/{job_id}")
+    """Recap generation/viewing is disabled for phase 1; return to index."""
+    return redirect("/")
 
 
 @app.route("/recap/<recap_id>")
 def recap_view(recap_id):
-    """View specific recap (generating or completed)."""
-    # Check if this is an active job
-    job = get_job(recap_id)
-    if job:
-        # Job in progress
-        return render_template("recap.html",
-                             recap_id=recap_id,
-                             email=job["email"],
-                             share_image_url=get_share_image_url(recap_id),
-                             show_existing=False,
-                             is_generating=True)
-
-    # Check if this is a completed recap
+    """Render completed recaps; generating or missing recap URLs return to index."""
     recap = get_recap_by_id(recap_id)
-    if recap:
-        # Completed recap
-        if recap["email"] == session.get("email"):
-            session["recap_id"] = recap_id
-        return render_template("recap.html",
-                             recap_id=recap_id,
-                             email=recap["email"],
-                             share_image_url=get_share_image_url(recap_id),
-                             show_existing=False,
-                             is_generating=False)
-
-    # Not found
-    return "Recap not found", 404
+    if not recap or not recap.get("slides"):
+        return redirect("/")
+    if recap["email"] == session.get("email"):
+        session["recap_id"] = recap_id
+    return render_template(
+        "recap.html",
+        recap_id=recap_id,
+        email=recap["email"],
+        gallery_name=recap["email"].split("@")[0],
+        share_image_url=get_share_image_url(recap_id),
+    )
 
 
 @app.route("/api/recap/<recap_id>")
@@ -1488,44 +1826,29 @@ def delete_recap_by_email():
     return jsonify({"success": True})
 
 
-# WebSocket for live progress updates
 @sock.route("/ws/job/<job_id>")
 def job_ws(ws, job_id):
-    # Subscribe BEFORE reading initial state so no notification can slip through
-    q = queue.Queue()
-    subscribers.setdefault(job_id, []).append(q)
-
+    q = queue.Queue(maxsize=20)
+    subscribe_job(job_id, q)
     try:
-        # Send initial state; handle race where job finished before WS connected
-        job = get_job(job_id)
-        if job:
-            ws.send(json.dumps({"status": job["status"], "progress": job["progress"]}))
-        else:
-            recap = get_recap_by_id(job_id)
-            if recap and recap.get("slides"):
-                # Job already done — tell client to fetch via HTTP (avoids sending huge payload)
-                ws.send(json.dumps({"status": "done"}))
-                return
+        initial = get_job_status_snapshot(job_id)
+        ws.send(json.dumps(initial))
+        if initial.get("status") in ("done", "error", "missing"):
+            return
 
         while True:
             try:
-                payload = q.get(timeout=25)
+                message = q.get(timeout=25)
             except queue.Empty:
-                ws.send(json.dumps({"type": "heartbeat"}))
-                continue
-            # Strip slides from the WebSocket message — client fetches via HTTP on "done"
-            if payload.get("status") == "done":
-                ws.send(json.dumps({"status": "done"}))
-            else:
-                ws.send(json.dumps(payload))
-            if payload.get("status") in ("done", "error"):
+                message = get_job_status_snapshot(job_id)
+
+            ws.send(json.dumps(message))
+            if message.get("status") in ("done", "error", "missing"):
                 break
-    except Exception:
-        logger.exception("WS error for job %s", job_id)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.info("WS closed for job %s: %s", job_id, exc)
     finally:
-        subs = subscribers.get(job_id, [])
-        if q in subs:
-            subs.remove(q)
+        unsubscribe_job(job_id, q)
 
 
 @app.route("/photos")
