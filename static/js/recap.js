@@ -1,3 +1,6 @@
+// Force-decode background image so it's in GPU memory before slide 2 appears
+{ const _i = new Image(); _i.src = '/static/imag/const_paper.webp'; if (_i.decode) _i.decode().catch(() => {}); }
+
 const slide_ids = ["slide1", "slide2", "slide3", "slide4"]
 var cur_slide = 0;
 let RECAP_DATA = null;
@@ -45,7 +48,8 @@ function go_to_slide(index) {
 function _updateDownloadBtn() {
     const btn = document.getElementById('download-btn');
     if (!btn) return;
-    btn.style.display = cur_slide === 0 ? 'none' : '';
+    const id = slide_ids[cur_slide];
+    btn.style.display = (id === 'slide1' || id === 'slide-thanks') ? 'none' : '';
 }
 
 function _bufToBase64(buf) {
@@ -151,20 +155,29 @@ async function captureSlideForIOS() {
 
 function next_slide() { go_to_slide(cur_slide + 1); }
 function prev_slide() { go_to_slide(cur_slide - 1); }
+const _activitySnap = {};
+const _activityAnimating = {};
+let _senioritis_snap = false;
+let _senioritis_animating = false;
+
 function isAnimating() {
     const id = slide_ids[cur_slide];
     if (id === 'slide1') return slide1Animating;
     if (id === 'slide2') return slide2Animating;
     if (id === 'slide3') return slide3Animating;
     if (id === 'slide4') return slide4Animating;
+    if (id === 'slide-senioritis') return _senioritis_animating;
+    if (id.startsWith('slide-activity-')) return !!_activityAnimating[id];
     return false;
 }
 function snapCurrent() {
     const id = slide_ids[cur_slide];
     if (id === 'slide1') snap_slide1();
-    if (id === 'slide2') slide2Snap = true;
-    if (id === 'slide3') slide3Snap = true;
-    if (id === 'slide4') slide4Snap = true;
+    else if (id === 'slide2') slide2Snap = true;
+    else if (id === 'slide3') slide3Snap = true;
+    else if (id === 'slide4') slide4Snap = true;
+    else if (id === 'slide-senioritis') _senioritis_snap = true;
+    else if (id.startsWith('slide-activity-')) _activitySnap[id] = true;
 }
 function forward()  { if (isAnimating()) { snapCurrent(); } else { next_slide(); } }
 function backward() { if (isAnimating()) { snapCurrent(); } else { prev_slide(); } }
@@ -523,12 +536,233 @@ function computeRecapStats(raw) {
 }
 
 const _ROBOTICS_LOGO_HTML = `<!doctypehtml><style>body{margin:0}svg{display:block;width:100vw;height:100vh}.draw{fill:none;stroke:#70ce35;stroke-linecap:round;stroke-miterlimit:10}</style><body><svg style=visibility:hidden viewBox="0 0 116.21 155.5"><g><path class=draw d=M91.63,61.53c9.58,8.96,15.57,21.72,15.57,35.87c0,27.12,-21.98,49.1,-49.1,49.1c-27.12,0,-49.1,-21.98,-49.1,-49.1c0,-14.15,5.99,-26.91,15.57,-35.87 id=U /><line class=draw id=I x1=58.1 x2=58.1 y1=97.4 y2=9 /><line class=draw id=L x1=58.1 x2=84.16 y1=9 y2=35.06 /><line class=draw id=J x1=58.1 x2=32.04 y1=9 y2=35.06 /></g></svg><script src=https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js></script><script>let p=new URLSearchParams(location.search),S=+(p.get("s")||1),bg=p.get("bg"),q=t=>document.getElementById(t),U=q("U"),I=q("I"),L=q("L"),J=q("J"),LJ=[L,J],sw="stroke-width",at="attr",gl="getTotalLength";bg&&"none"!==bg&&(document.body.style.background="#"+bg),[U,I,L,J].forEach(t=>{var e=t[gl]();t.style.strokeDasharray=e,t.style.strokeDashoffset=e}),document.querySelector("svg").style.visibility="";let tl=gsap.timeline();gsap.set(LJ,{[at]:{[sw]:0}},0),tl.fromTo(U,{[at]:{[sw]:0}},{[at]:{[sw]:18},duration:.2/S,ease:"power2.out"},0),tl.to(U,{strokeDashoffset:0,duration:1.1/S,ease:"power3.out"},0),tl.fromTo(I,{[at]:{[sw]:0}},{[at]:{[sw]:18},duration:.2/S,ease:"power2.out"},.25/S),tl.to(I,{strokeDashoffset:0,duration:.5/S},.25/S),tl.set(LJ,{[at]:{[sw]:18}},.7/S),tl.to(LJ,{strokeDashoffset:0,duration:.6/S,ease:"power3.out"},.7/S)<\/script>`;
-const _ROBOTICS_LOGO_SRC = 'data:text/html;charset=utf-8,' + encodeURIComponent(_ROBOTICS_LOGO_HTML);
+function _roboticsLogoSrc(speed) {
+    const html = _ROBOTICS_LOGO_HTML.replace('p.get("s")||1', `p.get("s")||${speed}`);
+    return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+}
 
-function _playRoboticsLogo(idx) {
+function _playRoboticsLogo(idx, snapped) {
     const iframe = document.getElementById(`rob-iframe-${idx}`);
     if (!iframe) return;
-    iframe.src = _ROBOTICS_LOGO_SRC;
+    iframe.src = _roboticsLogoSrc(snapped ? 999 : 1);
+}
+
+async function _animateActivitySlide(id, nameEl, captionEl, isRobotics, robIdx) {
+    _activityAnimating[id] = true;
+
+    const snap = () => _activitySnap[id];
+    const alive = () => slide_ids[cur_slide] === id;
+
+    captionEl.style.transition = '';
+    captionEl.style.opacity = '0';
+
+    if (isRobotics) _playRoboticsLogo(robIdx, snap());
+
+    const seasonWord = nameEl.dataset.seasonWord;
+    const season     = nameEl.dataset.season;
+    const rest       = nameEl.dataset.rest;
+
+    if (seasonWord) {
+        // Pre-render structure so color is present from character 1
+        nameEl.innerHTML = `<span class="activity-season-word activity-season-${season}"></span><br><span class="act-rest"></span>`;
+        const swEl   = nameEl.querySelector('.activity-season-word');
+        const restEl = nameEl.querySelector('.act-rest');
+        await typewriter(swEl, seasonWord, 45, null, alive, snap);
+        if (!alive()) { _activityAnimating[id] = false; return; }
+        await typewriter(restEl, rest, 45, null, alive, snap);
+    } else {
+        nameEl.innerHTML = '';
+        await typewriter(nameEl, nameEl.dataset.text || '', 45, null, alive, snap);
+    }
+
+    if (!alive()) { _activityAnimating[id] = false; return; }
+
+    if (isRobotics && snap()) _playRoboticsLogo(robIdx, true);
+
+    captionEl.style.transition = 'opacity 0.4s';
+    captionEl.style.opacity = '1';
+
+    _activityAnimating[id] = false;
+}
+
+function _senioritis_color(pct) {
+    // green (#22c55e) → amber (#f0b93a) → red (#ef4444)
+    if (pct <= 0.5) {
+        const t = pct * 2;
+        return `rgb(${Math.round(34+206*t)},${Math.round(197-12*t)},${Math.round(94-36*t)})`;
+    }
+    const t = (pct - 0.5) * 2;
+    return `rgb(${Math.round(240-1*t)},${Math.round(185-117*t)},${Math.round(58+10*t)})`;
+}
+
+function _buildSenioritis(senioritis) {
+    if (!senioritis) return;
+    const slidesContainer = document.querySelector('#main-recap-container .slides');
+    if (!slidesContainer) return;
+
+    const el = document.createElement('div');
+    el.id = 'slide-senioritis';
+    el.className = 'slide-base';
+    el.style.display = 'none';
+    el.innerHTML = `
+        <div class="s2cont">
+            <div>
+                <p class="sen-eyebrow" id="sen-eyebrow" style="opacity:0">SENIORITIS INDEX</p>
+                <div class="sen-score-row">
+                    <span class="sen-score" id="sen-score">0</span>
+                    <span class="sen-max">/100</span>
+                </div>
+                <div class="sen-bar-track">
+                    <div class="sen-bar-fill" id="sen-bar-fill"></div>
+                </div>
+                <p class="sen-label" id="sen-label"></p>
+                <div class="sen-stats" id="sen-stats" style="opacity:0"></div>
+            </div>
+        </div>
+    `;
+
+    // Insert in DOM after slide4, before any activity slides
+    const slide4El = document.getElementById('slide4');
+    if (slide4El && slide4El.nextSibling) {
+        slidesContainer.insertBefore(el, slide4El.nextSibling);
+    } else {
+        slidesContainer.appendChild(el);
+    }
+    // Insert into slide_ids at position 4 (after slide4, before activity slides)
+    slide_ids.splice(4, 0, 'slide-senioritis');
+
+    const TIERS = [
+        [0,  20, 'Bro was locked in'],
+        [21, 40, 'Slightly slacked off a bit'],
+        [41, 60, 'Cooked™'],
+        [61, 80, 'Bro is getting rescinded'],
+        [81, 100, 'Did you even come to school?'],
+    ];
+    const getTierLabel = s => (TIERS.find(([lo, hi]) => s <= hi) || TIERS[TIERS.length-1])[2];
+
+    function _animateSenBar(fillEl, scoreEl, target, alive, snapFn) {
+        const DURATION = 1400;
+        if (snapFn()) {
+            const c = _senioritis_color(target / 100);
+            fillEl.style.width = `${target}%`;
+            fillEl.style.background = c;
+            fillEl.style.boxShadow = `0 0 10px ${c}88`;
+            scoreEl.textContent = target;
+            scoreEl.style.color = c;
+            return Promise.resolve();
+        }
+        return new Promise(resolve => {
+            const t0 = Date.now();
+            const step = () => {
+                if (!alive()) { resolve(); return; }
+                if (snapFn()) {
+                    const c = _senioritis_color(target / 100);
+                    fillEl.style.width = `${target}%`;
+                    fillEl.style.background = c;
+                    fillEl.style.boxShadow = `0 0 10px ${c}88`;
+                    scoreEl.textContent = target;
+                    scoreEl.style.color = c;
+                    resolve(); return;
+                }
+                const p = Math.min((Date.now() - t0) / DURATION, 1);
+                const e = 1 - Math.pow(1 - p, 3);
+                const cur = Math.round(e * target);
+                const c = _senioritis_color(cur / 100);
+                fillEl.style.width = `${cur}%`;
+                fillEl.style.background = c;
+                fillEl.style.boxShadow = `0 0 10px ${c}66`;
+                scoreEl.textContent = cur;
+                scoreEl.style.color = c;
+                if (p < 1) requestAnimationFrame(step);
+                else {
+                    fillEl.style.width = `${target}%`;
+                    scoreEl.textContent = target;
+                    resolve();
+                }
+            };
+            requestAnimationFrame(step);
+        });
+    }
+
+    slide_on_enter['slide-senioritis'] = async () => {
+        _senioritis_snap = false;
+        _senioritis_animating = true;
+        const snap = () => _senioritis_snap;
+        const alive = () => slide_ids[cur_slide] === 'slide-senioritis';
+
+        if (!RECAP_DATA) await dataReady;
+        if (!alive()) { _senioritis_animating = false; return; }
+
+        // Pre-render stats invisible so layout is reserved before animations start
+        const statsEl = document.getElementById('sen-stats');
+        const statLines = [];
+        if (senioritis.missing > 0)
+            statLines.push(`${senioritis.missing} assignment${senioritis.missing !== 1 ? 's' : ''} never submitted`);
+        if (senioritis.late > 0)
+            statLines.push(`${senioritis.late} late submission${senioritis.late !== 1 ? 's' : ''}`);
+        if (senioritis.last_minute > 0)
+            statLines.push(`${senioritis.last_minute} last-minute submission${senioritis.last_minute !== 1 ? 's' : ''}`);
+        if (statLines.length) {
+            statsEl.innerHTML = statLines.map(t =>
+                `<div class="sen-stat-item" style="opacity:0;transform:translateX(-10px)">${t}</div>`
+            ).join('');
+            statsEl.style.opacity = '1';
+        }
+
+        const eyebrow = document.getElementById('sen-eyebrow');
+        eyebrow.style.transition = snap() ? 'none' : 'opacity 0.5s';
+        eyebrow.style.opacity = '1';
+
+        await delay(snap() ? 0 : 350, alive, snap);
+        if (!alive()) { _senioritis_animating = false; return; }
+
+        await _animateSenBar(
+            document.getElementById('sen-bar-fill'),
+            document.getElementById('sen-score'),
+            senioritis.score, alive, snap
+        );
+        if (!alive()) { _senioritis_animating = false; return; }
+
+        await delay(snap() ? 0 : 250, alive, snap);
+        if (!alive()) { _senioritis_animating = false; return; }
+
+        await typewriter(document.getElementById('sen-label'), getTierLabel(senioritis.score), 38, null, alive, snap);
+        if (!alive()) { _senioritis_animating = false; return; }
+
+        await delay(snap() ? 0 : 150, alive, snap);
+        if (!alive()) { _senioritis_animating = false; return; }
+
+        for (const item of statsEl.querySelectorAll('.sen-stat-item')) {
+            if (!alive()) { _senioritis_animating = false; return; }
+            if (snap()) {
+                item.style.transition = 'none';
+                item.style.opacity = '1';
+                item.style.transform = 'translateX(0)';
+            } else {
+                item.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+                item.style.opacity = '1';
+                item.style.transform = 'translateX(0)';
+                await delay(200, alive, snap);
+            }
+        }
+
+        _senioritis_animating = false;
+    };
+
+    slide_on_exit['slide-senioritis'] = () => {
+        _senioritis_animating = false;
+        _senioritis_snap = false;
+        const eyebrow = document.getElementById('sen-eyebrow');
+        if (eyebrow) { eyebrow.style.transition = 'none'; eyebrow.style.opacity = '0'; }
+        const fillEl = document.getElementById('sen-bar-fill');
+        if (fillEl) { fillEl.style.width = '0%'; fillEl.style.background = '#22c55e'; fillEl.style.boxShadow = ''; }
+        const scoreEl = document.getElementById('sen-score');
+        if (scoreEl) { scoreEl.textContent = '0'; scoreEl.style.color = ''; }
+        const labelEl = document.getElementById('sen-label');
+        if (labelEl) labelEl.textContent = '';
+        const statsEl = document.getElementById('sen-stats');
+        if (statsEl) { statsEl.style.opacity = '0'; statsEl.innerHTML = ''; }
+    };
 }
 
 function _buildActivitySlides(activities) {
@@ -554,8 +788,21 @@ function _buildActivitySlides(activities) {
                 <div class="activity-bg" style="background-image:url('${d.image_url}');background-position:${bgPos}"></div>
                 <div class="activity-gradient"></div>
                 <div class="activity-content">
-                    <p class="activity-category"><span class="activity-season-word activity-season-${d.season}">${seasonLabel}</span> Sport</p>
-                    <h1 class="activity-name">${d.sport}</h1>
+                    <p class="activity-category" style="opacity:0"><span class="activity-season-word activity-season-${d.season}">${seasonLabel}</span> Sport</p>
+                    <h1 class="activity-name" data-text="${d.sport}"></h1>
+                </div>
+            `;
+        } else if (act.type === 'performing_arts') {
+            el.className = 'slide-base slide-activity' + (d.l_d === 'light' ? ' activity-light' : '');
+            const [seasonWord, ...restWords] = d.label.split(' ');
+            const restLabel = restWords.join(' ');
+            // Typewriter runs on plain text; color span re-applied after via data attributes
+            el.innerHTML = `
+                <div class="activity-bg" style="background-image:url('${d.image_url}');background-position:${bgPos}"></div>
+                <div class="activity-gradient"></div>
+                <div class="activity-content">
+                    <p class="activity-category" style="opacity:0">Performing Arts</p>
+                    <h1 class="activity-name" data-text="${d.label}" data-season="${d.season}" data-season-word="${seasonWord}" data-rest="${restLabel}"></h1>
                 </div>
             `;
         } else if (act.type === 'robotics') {
@@ -567,29 +814,66 @@ function _buildActivitySlides(activities) {
                     <iframe id="rob-iframe-${i}" src="" style="width:100%;height:100%;border:none;background:transparent;" scrolling="no"></iframe>
                 </div>
                 <div class="activity-content">
-                    <p class="activity-robotics-quote">"Wait, Pinewood has a robotics team?"</p>
-                    <h1 class="activity-name">Robotics</h1>
+                    <p class="activity-robotics-quote" style="opacity:0">"Wait, Pinewood has a robotics team?"</p>
+                    <h1 class="activity-name" data-text="Robotics"></h1>
                 </div>
             `;
-
-            const logoIdx = i;
-            slide_on_enter[id] = () => _playRoboticsLogo(logoIdx);
         } else {
             return;
         }
 
         slidesContainer.appendChild(el);
         slide_ids.push(id);
-        if (!slide_on_enter[id]) slide_on_enter[id] = () => {};
-        slide_on_exit[id]  = () => {};
+
+        // Wire up animation
+        const nameEl    = el.querySelector('.activity-name');
+        const captionEl = el.querySelector('.activity-category, .activity-robotics-quote');
+        const isRob     = act.type === 'robotics';
+        const robIdx    = i;
+
+        // For performing_arts, typewriter runs on plain text then we re-render with colored span
+        const _onEnter = () => {
+            _activitySnap[id] = false;
+            const rawText = nameEl.dataset.text || '';
+            const doAnim = async () => {
+                await _animateActivitySlide(id, nameEl, captionEl, isRob, robIdx);
+            };
+            doAnim();
+        };
+        slide_on_enter[id] = _onEnter;
+        slide_on_exit[id]  = () => { _activityAnimating[id] = false; _activitySnap[id] = false; };
     });
 }
 
 async function initRecapData() {
-    const resp = await fetch(`/api/recap/${RECAP_ID}`);
-    const json = await resp.json();
+    let json = null;
+    const cacheKey = 'recap_cache_' + RECAP_ID;
+    try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) json = JSON.parse(cached);
+    } catch(e) {}
+    if (!json) {
+        const resp = await fetch(`/api/recap/${RECAP_ID}`);
+        json = await resp.json();
+    }
     RECAP_DATA = computeRecapStats(json.slides);
+    _buildSenioritis(json.slides.senioritis || null);
     _buildActivitySlides(json.slides.activities || []);
+    slide_ids.push('slide-thanks');
+    slide_on_enter['slide-thanks'] = () => {
+        const hero = document.querySelector('#slide-thanks .slide-thanks-hero');
+        if (!hero) return;
+        hero.style.transition = 'none';
+        hero.style.opacity = '0';
+        requestAnimationFrame(() => {
+            hero.style.transition = 'opacity 0.7s ease';
+            hero.style.opacity = '1';
+        });
+    };
+    slide_on_exit['slide-thanks'] = () => {
+        const hero = document.querySelector('#slide-thanks .slide-thanks-hero');
+        if (hero) { hero.style.transition = 'none'; hero.style.opacity = '0'; }
+    };
     _dataReadyResolve();
     const cgEl = document.getElementById('s2-graph');
     if (cgEl) {
@@ -657,22 +941,22 @@ function typewriter(el, text, msPerChar, ncEl, alive, snapFn = () => false) {
     });
 }
 
-function countUp(el, from, to, durationMs, ncEl, alive, snapFn = () => false) {
-    if (snapFn()) { el.textContent = to; if (ncEl) updateNotecard(ncEl); return Promise.resolve(); }
+function countUp(el, from, to, durationMs, ncEl, alive, snapFn = () => false, suffix = '') {
+    if (snapFn()) { el.textContent = to + suffix; if (ncEl) updateNotecard(ncEl); return Promise.resolve(); }
     return new Promise(resolve => {
         const startTime = Date.now();
         const step = () => {
             if (alive && !alive()) { resolve(); return; }
-            if (snapFn()) { el.textContent = to; if (ncEl) updateNotecard(ncEl); resolve(); return; }
+            if (snapFn()) { el.textContent = to + suffix; if (ncEl) updateNotecard(ncEl); resolve(); return; }
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / durationMs, 1);
             const eased = 1 - Math.pow(1 - progress, 3);
-            el.textContent = Math.round(from + (to - from) * eased);
+            el.textContent = Math.round(from + (to - from) * eased) + suffix;
             if (ncEl) updateNotecard(ncEl);
             if (progress < 1) {
                 requestAnimationFrame(step);
             } else {
-                el.textContent = to;
+                el.textContent = to + suffix;
                 if (ncEl) updateNotecard(ncEl);
                 resolve();
             }
@@ -1336,7 +1620,7 @@ async function animate_slide4() {
 
     if (!alive()) { slide4Animating = false; return; }
     const pctEl = document.getElementById('s4-late-pct');
-    const pctPromise = countUp(pctEl, 0, d.late_pct, 600, null, alive, snap);
+    const pctPromise = countUp(pctEl, 0, d.late_pct, 600, null, alive, snap, '%');
     await delay(100, alive, snap);
 
     if (!alive()) { slide4Animating = false; return; }
@@ -1345,7 +1629,6 @@ async function animate_slide4() {
 
     await pctPromise;
     if (!alive()) { slide4Animating = false; return; }
-    pctEl.textContent = `${d.late_pct}%`;
 
     if (!alive()) { slide4Animating = false; return; }
     await delay(300, alive, snap);
@@ -1440,8 +1723,8 @@ if (slide_on_enter[slide_ids[cur_slide]]) slide_on_enter[slide_ids[cur_slide]]()
 _updateDownloadBtn();
 
 (async function initPhotoScroll() {
-    const container = document.querySelector('.photos-album-selection-scroll');
-    if (!container) return;
+    const containers = [...document.querySelectorAll('.photos-album-selection-scroll')];
+    if (!containers.length) return;
 
     let photos;
     const selRes = await fetch(`/photos/selection/${GALLERY_NAME}.json`);
@@ -1467,99 +1750,103 @@ _updateDownloadBtn();
         [photos[i], photos[j]] = [photos[j], photos[i]];
     }
 
-    function shouldUseThreeCols() {
-        return document.documentElement.classList.contains('iosapp') &&
-               window.innerWidth > window.innerHeight;
-    }
-
-    function buildTrack(photoGroup, widthPct, leftPct) {
-        const track = document.createElement('div');
-        track.className = 'scroll-track';
-        track.style.width = `${widthPct}%`;
-        track.style.left = `${leftPct}%`;
-        container.appendChild(track);
-        [...photoGroup, ...photoGroup].forEach(photo => {
-            const wrap = document.createElement('div');
-            wrap.className = 'photo-wrap';
-            const img = document.createElement('img');
-            img.src = `https://photos.recap.pinewood.one/${photo.path}`;
-            img.loading = 'lazy';
-            img.decoding = 'async';
-            wrap.appendChild(img);
-            track.appendChild(wrap);
-        });
-        return track;
-    }
-
-    function applyCrinkle() {
-        container.style.setProperty('--crinkle-rot', `${Math.random() * 360}deg`);
-        container.style.setProperty('--crinkle-x', `${Math.random() * 100}%`);
-        container.style.setProperty('--crinkle-y', `${Math.random() * 100}%`);
-    }
-
-    let intervalId = null;
-    let activeMode = null;
-
-    function startLayout() {
-        if (intervalId !== null) { clearInterval(intervalId); intervalId = null; }
-        container.querySelectorAll('.scroll-track').forEach(t => t.remove());
-
-        const useThreeCols = shouldUseThreeCols();
-        activeMode = useThreeCols ? 'three' : 'single';
-
-        const tracks = [];
-
-        if (useThreeCols) {
-            const n = photos.length;
-            const t = Math.ceil(n / 3);
-            const groups = [photos.slice(0, t), photos.slice(t, t * 2), photos.slice(t * 2)];
-            groups.forEach(g => {
-                for (let i = g.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [g[i], g[j]] = [g[j], g[i]];
-                }
-            });
-            const colW = 32, centers = [10, 50, 90];
-            const stepFactors = [1.0, 0.65, 1.1];
-            groups.forEach((g, i) => {
-                tracks.push({ track: buildTrack(g, colW, centers[i] - colW / 2), y: 0, stepFactor: stepFactors[i] });
-            });
-        } else {
-            tracks.push({ track: buildTrack(photos, 67, 16.5), y: 0, stepFactor: 1.0 });
+    function _setupPhotoContainer(container) {
+        function shouldUseThreeCols() {
+            return document.documentElement.classList.contains('iosapp') &&
+                   window.innerWidth > window.innerHeight;
         }
 
-        const step = container.offsetHeight * 0.2;
-        let flip = 1;
+        function buildTrack(photoGroup, widthPct, leftPct) {
+            const track = document.createElement('div');
+            track.className = 'scroll-track';
+            track.style.width = `${widthPct}%`;
+            track.style.left = `${leftPct}%`;
+            container.appendChild(track);
+            [...photoGroup, ...photoGroup].forEach(photo => {
+                const wrap = document.createElement('div');
+                wrap.className = 'photo-wrap';
+                const img = document.createElement('img');
+                img.src = `https://photos.recap.pinewood.one/${photo.path}`;
+                img.loading = 'lazy';
+                img.decoding = 'async';
+                wrap.appendChild(img);
+                track.appendChild(wrap);
+            });
+            return track;
+        }
 
-        function applyRotations() {
-            tracks.forEach(({ track }) => {
-                track.querySelectorAll('.photo-wrap').forEach((wrap, i) => {
-                    const sign = (i % 2 === 0 ? 1 : -1) * flip;
-                    wrap.style.transform = `rotate(${sign * (Math.random() * 10 + 5)}deg)`;
+        function applyCrinkle() {
+            container.style.setProperty('--crinkle-rot', `${Math.random() * 360}deg`);
+            container.style.setProperty('--crinkle-x', `${Math.random() * 100}%`);
+            container.style.setProperty('--crinkle-y', `${Math.random() * 100}%`);
+        }
+
+        let intervalId = null;
+        let activeMode = null;
+
+        function startLayout() {
+            if (intervalId !== null) { clearInterval(intervalId); intervalId = null; }
+            container.querySelectorAll('.scroll-track').forEach(t => t.remove());
+
+            const useThreeCols = shouldUseThreeCols();
+            activeMode = useThreeCols ? 'three' : 'single';
+
+            const tracks = [];
+
+            if (useThreeCols) {
+                const n = photos.length;
+                const t = Math.ceil(n / 3);
+                const groups = [photos.slice(0, t), photos.slice(t, t * 2), photos.slice(t * 2)];
+                groups.forEach(g => {
+                    for (let i = g.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [g[i], g[j]] = [g[j], g[i]];
+                    }
                 });
-            });
+                const colW = 32, centers = [10, 50, 90];
+                const stepFactors = [1.0, 0.65, 1.1];
+                groups.forEach((g, i) => {
+                    tracks.push({ track: buildTrack(g, colW, centers[i] - colW / 2), y: 0, stepFactor: stepFactors[i] });
+                });
+            } else {
+                tracks.push({ track: buildTrack(photos, 67, 16.5), y: 0, stepFactor: 1.0 });
+            }
+
+            const step = container.offsetHeight * 0.2;
+            let flip = 1;
+
+            function applyRotations() {
+                tracks.forEach(({ track }) => {
+                    track.querySelectorAll('.photo-wrap').forEach((wrap, i) => {
+                        const sign = (i % 2 === 0 ? 1 : -1) * flip;
+                        wrap.style.transform = `rotate(${sign * (Math.random() * 10 + 5)}deg)`;
+                    });
+                });
+            }
+
+            applyCrinkle();
+            applyRotations();
+
+            intervalId = setInterval(() => {
+                tracks.forEach(state => {
+                    state.y += step * state.stepFactor;
+                    const half = state.track.scrollHeight / 2;
+                    if (half > 0 && state.y >= half) state.y = 0;
+                    state.track.style.transform = `translateY(-${state.y}px)`;
+                });
+                flip *= -1;
+                applyRotations();
+                applyCrinkle();
+            }, 800);
         }
 
-        applyCrinkle();
-        applyRotations();
+        startLayout();
 
-        intervalId = setInterval(() => {
-            tracks.forEach(state => {
-                state.y += step * state.stepFactor;
-                const half = state.track.scrollHeight / 2;
-                if (half > 0 && state.y >= half) state.y = 0;
-                state.track.style.transform = `translateY(-${state.y}px)`;
-            });
-            flip *= -1;
-            applyRotations();
-            applyCrinkle();
-        }, 800);
+        window.addEventListener('resize', () => {
+            const newMode = shouldUseThreeCols() ? 'three' : 'single';
+            if (newMode !== activeMode) startLayout();
+        });
     }
 
-    startLayout();
-
-    window.addEventListener('resize', () => {
-        const newMode = shouldUseThreeCols() ? 'three' : 'single';
-        if (newMode !== activeMode) startLayout();
-    });
+    containers.forEach(_setupPhotoContainer);
 })();

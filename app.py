@@ -111,6 +111,14 @@ _SPORT_SLUG_MAP: dict[str, list[str]] = {
 
 _ROBOTICS_SLUGS = ["robotics/sf-district", "robotics/cv-district", "robotics/misc"]
 
+with open(os.path.join(os.path.dirname(__file__), "performing_arts.json")) as f:
+    _performing_arts_data = json.load(f)
+
+_PERFORMING_ARTS_SLUG_MAP: dict[str, list[str]] = {
+    "spring_musical": ["performing-arts/spring-musical"],
+    "fall_play":      ["performing-arts/fall-play"],
+}
+
 # Initialize databases ---------------------------------------------------
 def init_recap_db():
     """Initialize both recaps (permanent) and jobs (temporary queue) tables."""
@@ -449,16 +457,25 @@ def estimate_job_percent(status, progress):
         "sections": 15,
         "enrollments": 25,
         "assignments": 35,
-        "submissions": 65,
         "grades": 70,
-        "activities": 85,
+        "activities": 88,
     }
+    if stage == "submissions":
+        # Real progress: count/total tracked per-request in _fetch_user_submissions
+        pct = progress.get("percent")
+        if isinstance(pct, (int, float)):
+            return int(pct)
+        count = progress.get("count", 0)
+        total = progress.get("total", 0)
+        if total > 0:
+            return 35 + round((count / total) * 50)
+        return 35
     if stage == "assignment_batch":
         count = progress.get("count")
         total = progress.get("total")
         if isinstance(count, (int, float)) and isinstance(total, (int, float)) and total > 0:
-            return min(55, 35 + round((count / total) * 20))
-        return 45
+            return min(34, 15 + round((count / total) * 20))
+        return 25
     if stage in stage_percent:
         return stage_percent[stage]
     return 5
@@ -606,13 +623,52 @@ def fetch_avatar_data_uri(auth, avatar_url: str | None):
 
 
 def send_recap_email(email: str | None, job_id: str):
-    """Send recap-ready email via SES when configured, else log to console."""
+    """Send recap-ready email. Tries Gmail SMTP first, then SES, then logs."""
     if not email:
         return
 
     base_url = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
     recap_link = f"{base_url}/recap/{job_id}" if base_url else f"/recap/{job_id}"
 
+    subject = "Your Schoology Recap is ready!"
+    body_text = f"Hi! Your Pinewood Schoology Recap is ready to view.\n\nView it here: {recap_link}\n\n— Pinewood Tech Club"
+    body_html = f"""<div style="font-family:sans-serif">
+  <h2 style="font-size:2rem;margin-bottom:8px">Your Recap is ready!</h2>
+  <p style="color:#444;font-size: 1.2rem">Your Pinewood Schoology Recap has finished generating. Here's a link to it!</p>
+  <a href="{recap_link}" style="display:inline-block;margin:16px 0;padding:12px 20px;background:#2d6a2d;color:#fff;border-radius:10px;text-decoration:none;font-weight:700">View Your Recap</a>
+  <p style="color:#888;font-size:12px"><a href="{recap_link}" style="color:#888">{recap_link}</a></p>
+  <p style="color:#444;line-height:1.6; font-size: 1.2rem">From the <a style="color: #2d6a2d" href="https://techclub.pw">Pinewood Tech Club</a></p>
+</div>"""
+
+    # ── Gmail SMTP ──────────────────────────────────────────────────────────
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASSWORD")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+
+    if smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = f"Pinewood Tech Club <{smtp_from}>"
+            msg["To"] = email
+            msg.attach(MIMEText(body_text, "plain"))
+            msg.attach(MIMEText(body_html, "html"))
+
+            with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, email, msg.as_string())
+
+            logger.info("SMTP email sent to %s for recap %s", email, job_id)
+            return
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception("SMTP email failed; trying SES: %s", exc)
+
+    # ── AWS SES fallback ────────────────────────────────────────────────────
     ses_region = os.environ.get("AWS_SES_REGION")
     ses_sender = os.environ.get("AWS_SES_SENDER")
     aws_key = os.environ.get("AWS_ACCESS_KEY_ID")
@@ -621,7 +677,6 @@ def send_recap_email(email: str | None, job_id: str):
     if ses_region and ses_sender and aws_key and aws_secret:
         try:
             import boto3
-
             ses_client = boto3.client(
                 "ses",
                 region_name=ses_region,
@@ -632,21 +687,16 @@ def send_recap_email(email: str | None, job_id: str):
                 Source=ses_sender,
                 Destination={"ToAddresses": [email]},
                 Message={
-                    "Subject": {"Data": "Your Schoology recap is ready"},
-                    "Body": {
-                        "Text": {
-                            "Data": f"Your recap is ready. View it here: {recap_link}",
-                        }
-                    },
+                    "Subject": {"Data": subject},
+                    "Body": {"Text": {"Data": body_text}, "Html": {"Data": body_html}},
                 },
             )
             logger.info("SES email sent to %s for recap %s", email, job_id)
             return
         except Exception as exc:  # pylint: disable=broad-except
-            logger.exception("SES email failed; falling back to log: %s", exc)
+            logger.exception("SES email failed: %s", exc)
 
-    # Fallback: log/print if SES not configured
-    logger.info("Recap ready for %s; link: %s", email, recap_link)
+    logger.info("No email transport configured; recap ready for %s: %s", email, recap_link)
 
 
 # Background worker ----------------------------------------------------------
@@ -959,7 +1009,7 @@ def _fetch_for_sections(auth, section_ids, sub_path, item_key, page_limit=200):
     return results
 
 
-def _fetch_user_submissions(auth, tasks, user_id):
+def _fetch_user_submissions(auth, tasks, user_id, progress_cb=None):
     """
     Fetch per-user submission revisions for a list of (section_id, assignment_id) pairs.
     Returns {(section_id, assignment_id): SimpleNamespace | None}.
@@ -995,11 +1045,21 @@ def _fetch_user_submissions(auth, tasks, user_id):
         return (sid, aid), 429, {}
 
     output = {}
+    total = len(tasks)
+    completed = 0
+    last_reported_pct = [-1]  # track last sent % to avoid flooding
+
     # max_workers=3 keeps us under Schoology's 15-req/5s rate limit
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(_fetch_one, sid, aid): (sid, aid) for sid, aid in tasks}
         for future in as_completed(futures):
             (sid, aid), status, data = future.result()
+            completed += 1
+            if progress_cb and total > 0:
+                pct = 35 + round((completed / total) * 50)
+                if pct >= last_reported_pct[0] + 2 or completed == total:
+                    last_reported_pct[0] = pct
+                    progress_cb(completed, total, pct)
 
             if status != 200:
                 output[(sid, aid)] = None
@@ -1413,7 +1473,121 @@ def _build_activities(username: str) -> list[dict]:
                 },
             })
 
+    # Performing Arts
+    _SHOW_META = {
+        "spring_musical": {"label": "Spring Musical", "season": "spring"},
+        "fall_play":       {"label": "Fall Play",      "season": "fall"},
+    }
+    for show_key, show_info in _SHOW_META.items():
+        members = _performing_arts_data.get(show_key, {}).get("members", [])
+        if not members or username not in members:
+            continue
+        slugs = _PERFORMING_ARTS_SLUG_MAP.get(show_key, [])
+        paths = _photos_for_slugs(slugs)
+        photo_path = _best_photo_for_user(username, paths, set(m for m in members if m))
+        if not photo_path:
+            continue
+        image_url = f"{PHOTOS_BASE_URL}/{photo_path}"
+        analysis = _analyze_image(image_url, _bbox_for(username, photo_path))
+        activities.append({
+            "type": "performing_arts",
+            "dat": {
+                "label": show_info["label"],
+                "season": show_info["season"],
+                "image_url": image_url,
+                "l_d": analysis["l_d"],
+                "face_pos": analysis["face_pos"],
+            },
+        })
+
     return activities
+
+
+def _compute_senioritis(assignments_by_section, latest_submissions):
+    """Compute 0-100 senioritis score for class of 2026 students."""
+    RANGE_START_TS = int(datetime(2026, 1, 7).timestamp())
+    RANGE_END_TS   = int(datetime(2026, 5, 19, 23, 59, 59).timestamp())
+    now_ts = int(datetime.utcnow().timestamp())
+
+    total_with_due = 0
+    missing = 0
+    late_count = 0
+    last_minute = 0
+    night_owl = 0
+    total_subs = 0
+
+    for sid, assigns in assignments_by_section.items():
+        for a in assigns:
+            due_raw = getattr(a, "due", None)
+            if not due_raw:
+                continue
+            due_dt = parse_dt(due_raw)
+            if not due_dt:
+                continue
+            due_ts = int(due_dt.replace(tzinfo=None).timestamp())
+            if due_ts < RANGE_START_TS or due_ts > RANGE_END_TS:
+                continue
+            if due_ts > now_ts:
+                continue
+            total_with_due += 1
+
+            sub = latest_submissions.get(str(a.id))
+            if not sub:
+                missing += 1
+                continue
+
+            raw_sub = getattr(sub, "submitted", None) or getattr(sub, "created", None)
+            if not raw_sub:
+                missing += 1
+                continue
+
+            if isinstance(raw_sub, (int, float)):
+                sub_ts = int(raw_sub)
+            elif isinstance(raw_sub, str) and raw_sub.isdigit():
+                sub_ts = int(raw_sub)
+            else:
+                sub_dt = parse_dt(raw_sub)
+                if not sub_dt:
+                    missing += 1
+                    continue
+                sub_ts = int(sub_dt.replace(tzinfo=None).timestamp())
+
+            total_subs += 1
+
+            if sub_ts > due_ts:
+                late_count += 1
+            elif 0 <= (due_ts - sub_ts) <= 3600:
+                last_minute += 1
+
+            # Night owl: PST = UTC-8
+            pst_hour = (datetime.utcfromtimestamp(sub_ts).hour - 8) % 24
+            if pst_hour >= 22 or pst_hour < 6:
+                night_owl += 1
+
+    if total_with_due == 0:
+        return None
+
+    missing_pct = missing / total_with_due
+    late_pct    = late_count / total_with_due
+    lm_pct      = last_minute / total_with_due
+    night_pct   = night_owl / max(total_subs, 1)
+
+    score = round(
+        min(missing_pct * 150, 40) +
+        min(late_pct    * 150, 25) +
+        min(lm_pct      *  80, 20) +
+        min(night_pct   *  60, 15)
+    )
+    return {
+        "score":       max(0, min(100, score)),
+        "total":       total_with_due,
+        "missing":     missing,
+        "late":        late_count,
+        "last_minute": last_minute,
+        "missing_pct": round(missing_pct * 100),
+        "late_pct":    round(late_pct * 100),
+        "lm_pct":      round(lm_pct * 100),
+    }
 
 
 def build_recap(payload):
@@ -1524,8 +1698,12 @@ def build_recap(payload):
         for section in sections
         for assignment in assignments_by_section[section.id]
     ]
-    notify_progress(job_id, {"status": "running", "stage": "submissions", "total": len(all_tasks)})
-    raw_submissions = _fetch_user_submissions(auth, all_tasks, user_id)
+    notify_progress(job_id, {"status": "running", "stage": "submissions", "count": 0, "total": len(all_tasks), "percent": 35})
+
+    def _sub_progress(count, total, pct):
+        notify_progress(job_id, {"status": "running", "stage": "submissions", "count": count, "total": total, "percent": pct})
+
+    raw_submissions = _fetch_user_submissions(auth, all_tasks, user_id, progress_cb=_sub_progress)
 
     latest_submissions: dict[str, SimpleNamespace] = {
         str(aid): obj
@@ -1540,11 +1718,16 @@ def build_recap(payload):
     notify_progress(job_id, {"status": "running", "stage": "activities"})
     activities = _build_activities(username)
 
+    senioritis = None
+    if username.startswith("26"):
+        senioritis = _compute_senioritis(assignments_by_section, latest_submissions)
+
     return {
         "mode": "student",
         "user_name": schoology_user["name"],
         "assignments": course_list,
         "activities": activities,
+        "senioritis": senioritis,
     }
 
 
@@ -1593,7 +1776,8 @@ def index():
             else:
                 session.pop("recap_id", None)
                 recap_id = None
-    return render_template("index.html", user_name=user_name, recap_id=recap_id, recap_ready=recap_ready)
+    ios_app = request.args.get("iosapp") == "1"
+    return render_template("index.html", user_name=user_name, recap_id=recap_id, recap_ready=recap_ready, ios_app=ios_app)
 
 
 @app.route("/auth/logout")
@@ -1781,6 +1965,142 @@ def auth_callback():
 def recap_index():
     """Recap generation/viewing is disabled for phase 1; return to index."""
     return redirect("/")
+
+
+def _build_demo_activities() -> list[dict]:
+    """Pick one random person per sport/activity who has a photo, return all activity slides."""
+    import random
+    if not galleries_module.wait_ready(timeout=30):
+        return []
+    raw_meta = galleries_module.get_raw_metadata()
+
+    def _bbox_for(uname, path):
+        apps = {a["photo"]: a for a in raw_meta.get(uname, {}).get("appearances", [])}
+        a = apps.get(path)
+        return a.get("bbox") if a else None
+
+    activities = []
+
+    # Sports
+    for season, sport_list in [("fall", _sports_data["fall"]),
+                                ("winter", _sports_data["winter"]),
+                                ("spring", _sports_data["spring"])]:
+        for sport in sport_list:
+            members = [m for m in sport["members"] if m]
+            random.shuffle(members)
+            for username in members:
+                photo_path = _find_sport_photo(username, sport["name"], sport["members"])
+                if not photo_path:
+                    continue
+                image_url = f"{PHOTOS_BASE_URL}/{photo_path}"
+                analysis = _analyze_image(image_url, _bbox_for(username, photo_path))
+                activities.append({
+                    "type": "sport",
+                    "dat": {
+                        "season": season,
+                        "sport": sport["name"],
+                        "image_url": image_url,
+                        "l_d": analysis["l_d"],
+                        "face_pos": analysis["face_pos"],
+                    },
+                })
+                break
+
+    # Robotics
+    with open(os.path.join(os.path.dirname(__file__), "robotics.json")) as _f:
+        _robotics = json.load(_f)
+    all_robotics_members = [m for m in _robotics.get("members", []) + _robotics.get("kinda_members", []) if m]
+    random.shuffle(all_robotics_members)
+    for username in all_robotics_members:
+        photo_path = _find_robotics_photo(username, all_robotics_members)
+        if not photo_path:
+            continue
+        image_url = f"{PHOTOS_BASE_URL}/{photo_path}"
+        analysis = _analyze_image(image_url, _bbox_for(username, photo_path))
+        activities.append({
+            "type": "robotics",
+            "dat": {"image_url": image_url, "face_pos": analysis["face_pos"]},
+        })
+        break
+
+    # Performing Arts
+    _SHOW_META = {
+        "spring_musical": {"label": "Spring Musical", "season": "spring"},
+        "fall_play":       {"label": "Fall Play",      "season": "fall"},
+    }
+    for show_key, show_info in _SHOW_META.items():
+        members = [m for m in _performing_arts_data.get(show_key, {}).get("members", []) if m]
+        if not members:
+            continue
+        slugs = _PERFORMING_ARTS_SLUG_MAP.get(show_key, [])
+        paths = _photos_for_slugs(slugs)
+        random.shuffle(members)
+        for username in members:
+            photo_path = _best_photo_for_user(username, paths, set(members))
+            if not photo_path:
+                continue
+            image_url = f"{PHOTOS_BASE_URL}/{photo_path}"
+            analysis = _analyze_image(image_url, _bbox_for(username, photo_path))
+            activities.append({
+                "type": "performing_arts",
+                "dat": {
+                    "label": show_info["label"],
+                    "season": show_info["season"],
+                    "image_url": image_url,
+                    "l_d": analysis["l_d"],
+                    "face_pos": analysis["face_pos"],
+                },
+            })
+            break
+
+    return activities
+
+
+@app.route("/recap/demo")
+def recap_demo_view():
+    return render_template("recap.html", recap_id="demo", email="demo@pinewood.edu",
+                           gallery_name="demo", share_image_url=None)
+
+
+@app.route("/api/recap/demo")
+def recap_demo_api():
+    import random, math
+    # Fake assignment events spread across Jan–May 2026
+    range_start = datetime(2026, 1, 7)
+    range_end   = datetime(2026, 5, 19)
+    span_days   = (range_end - range_start).days
+    courses = ["AP English", "AP Calculus BC", "AP US History", "AP Chemistry", "AP CS Principles", "Spanish 4"]
+    assignments = []
+    for course in courses:
+        n = random.randint(18, 35)
+        events = []
+        for _ in range(n):
+            day_offset = random.randint(0, span_days)
+            hour = random.choices(range(24), weights=[1,1,1,1,1,1,2,3,4,5,6,7,8,9,10,10,9,8,8,9,9,8,5,2], k=1)[0]
+            ts = int((range_start + timedelta(days=day_offset, hours=hour, minutes=random.randint(0,59))).timestamp())
+            due_offset = random.randint(3600, 86400 * 3)
+            events.append({"t": ts, "due": ts + due_offset})
+        assignments.append({"course": course, "data": events})
+
+    activities = _build_demo_activities()
+
+    slides = {
+        "mode": "student",
+        "user_name": "Demo Student",
+        "assignments": assignments,
+        "activities": activities,
+        "senioritis": {
+            "score":       67,
+            "total":       85,
+            "missing":     8,
+            "late":        11,
+            "last_minute": 14,
+            "missing_pct": 9,
+            "late_pct":    13,
+            "lm_pct":      16,
+        },
+    }
+    return jsonify({"id": "demo", "slides": slides})
 
 
 @app.route("/recap/<recap_id>")

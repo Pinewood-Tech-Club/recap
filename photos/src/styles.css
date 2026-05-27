@@ -138,16 +138,21 @@ button { font-family: inherit; letter-spacing: inherit; }
   gap: 10px;
   padding: 18px 18px 6px;
 }
+.sidebar-brand a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: var(--text);
+}
+.sidebar-brand a:hover .sidebar-brand-name { opacity: 0.7; }
 .sidebar-brand-mark {
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  background: linear-gradient(150deg, #2ba85c 0%, var(--accent) 55%, var(--accent-hover) 100%);
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  box-shadow: 0 2px 6px rgba(27,138,75,0.35);
+  color: var(--muted);
   flex-shrink: 0;
 }
 .sidebar-brand-name {

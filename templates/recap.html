@@ -14,6 +14,7 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='recap.css') }}"
     />
+    <link rel="preload" as="image" href="/static/imag/const_paper.webp" />
     <script>
       if (new URLSearchParams(location.search).get("iosapp") === "1") {
         document.documentElement.classList.add("iosapp");
@@ -133,6 +134,20 @@
                   <span id="s3-streak-pre"></span><b class="val-primary" id="s3-streak-val"></b><span id="s3-streak-days"></span><span id="s3-streak-from-label"></span><b class="val-secondary" id="s3-streak-from"></b><span id="s3-streak-to-label"></span><b class="val-secondary" id="s3-streak-to"></b><span id="s3-streak-post"></span>
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+        <div id="slide-thanks" class="slide-base" style="display: none">
+          <div class="photos-album-selection-scroll"></div>
+          <div class="slide-thanks-hero">
+            <h1>The end</h1>
+            <p class="thanks-body">Thanks for checking out your recap!</p>
+            <p class="thanks-body">From the Pinewood Tech Club</p>
+            <p class="thanks-body"><a href="/photos" style="color: white; text-decoration: underline; font-weight: bold">View photos</a></p>
+            <div class="thanks-appclip">
+              <img src="{{ url_for('static', filename='imag/appclip.svg') }}" alt="Scan to open Pinewood Recap" />
+              <div style="display: flex; flex-direction: column;"><span style="color: white">Share Pinewood Recap with a friend</span>
+              <span>recap.pinewood.one</span></div>
             </div>
           </div>
         </div>

@@ -641,6 +641,11 @@ a {
         padding-top: calc(2.7 * var(--su) + var(--mobile-pad));
         padding-bottom: calc(2.7 * var(--su) + var(--mobile-pad));
     }
+
+    #slide-senioritis .s2cont {
+        padding-top: calc(var(--mobile-pad) + 2.7 * var(--su));
+        padding-bottom: calc(var(--mobile-pad) + 2.7 * var(--su));
+    }
 }
 
 /* ── iOS app — immersive full-screen layout ──────────────────────────────── */
@@ -683,6 +688,13 @@ a {
     padding-bottom: calc(2.7 * var(--su) + var(--iosapp-vpad));
     padding-left: calc(2.7 * var(--su) + var(--iosapp-hpad));
     padding-right: calc(2.7 * var(--su) + var(--iosapp-hpad));
+}
+
+.iosapp #slide-senioritis .s2cont {
+    padding-top: calc(var(--iosapp-vpad) + 2.7 * var(--su));
+    padding-bottom: calc(var(--iosapp-vpad) + 2.7 * var(--su));
+    padding-left: calc(var(--iosapp-hpad) + 2.7 * var(--su));
+    padding-right: calc(var(--iosapp-hpad) + 2.7 * var(--su));
 }
 
 /* ── iOS app — hide nav buttons ─────────────────────────────────────────── */
@@ -871,4 +883,179 @@ a {
     font-size: calc(1.25 * var(--su));
     color: rgba(255, 255, 255, 0.45);
     white-space: nowrap;
+}
+
+/* ── Senioritis slide ────────────────────────────────────────────────────── */
+
+#slide-senioritis {
+    position: relative;
+    background-image: url('/static/imag/const_paper.webp');
+    background-size: cover;
+    background-position: center;
+}
+
+#slide-senioritis::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: #3d0a0a;
+    mix-blend-mode: multiply;
+    z-index: 0;
+    pointer-events: none;
+}
+
+#slide-senioritis .s2cont {
+    position: relative;
+    z-index: 1;
+    justify-content: center;
+}
+
+.sen-eyebrow {
+    font-size: calc(2.1 * var(--su));
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: calc(3.5 * var(--su));
+    transition: opacity 0.5s ease;
+}
+
+.sen-score-row {
+    display: flex;
+    align-items: baseline;
+    gap: calc(0.8 * var(--su));
+    margin-bottom: calc(2.2 * var(--su));
+}
+
+.sen-score {
+    font-size: calc(20 * var(--su));
+    font-weight: 700;
+    line-height: 0.9;
+}
+
+.sen-max {
+    font-size: calc(4.2 * var(--su));
+    color: rgba(255, 255, 255, 0.35);
+    font-weight: 300;
+}
+
+.sen-bar-track {
+    width: 100%;
+    height: calc(1.3 * var(--su));
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: calc(0.65 * var(--su));
+    overflow: hidden;
+    margin-bottom: calc(3.5 * var(--su));
+}
+
+.sen-bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: calc(0.65 * var(--su));
+    background: #22c55e;
+}
+
+.sen-label {
+    font-size: calc(4 * var(--su));
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.1;
+    margin-bottom: calc(3.5 * var(--su));
+    min-height: calc(4.4 * var(--su));
+}
+
+.sen-stats {
+    display: flex;
+    flex-direction: column;
+    gap: calc(1.2 * var(--su));
+    transition: opacity 0.5s ease;
+}
+
+.sen-stat-item {
+    font-size: calc(2.4 * var(--su));
+    color: #fff;
+    font-weight: 300;
+    line-height: 1.3;
+}
+
+/* ── Thank you slide ─────────────────────────────────────────────────────── */
+
+#slide-thanks {
+    position: relative;
+}
+
+#slide-thanks::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to top,
+        rgba(0,0,0,0.88) 0%,
+        rgba(0,0,0,0.35) 50%,
+        rgba(0,0,0,0.0) 72%
+    );
+    z-index: 1;
+    pointer-events: none;
+}
+
+.slide-thanks-hero {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    padding: calc(3.6 * var(--su));
+    display: flex;
+    flex-direction: column;
+    gap: calc(2 * var(--su));
+    opacity: 0;
+}
+
+.slide-thanks-hero h1 {
+    font-size: calc(9.5 * var(--su));
+    font-weight: 700;
+    line-height: 1.02;
+    text-shadow: 0 2px 16px rgba(0,0,0,0.5);
+}
+
+.thanks-body {
+    font-size: calc(2.6 * var(--su));
+    font-weight: 300;
+    line-height: 1.6;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.6);
+}
+
+.thanks-appclip {
+    display: flex;
+    align-items: center;
+    gap: calc(1.6 * var(--su));
+    margin-top: calc(0.5 * var(--su));
+}
+
+.thanks-appclip img {
+    width: calc(10 * var(--su));
+    height: calc(10 * var(--su));
+    flex-shrink: 0;
+    border-radius: calc(1.4 * var(--su));
+}
+
+.thanks-appclip span {
+    font-size: calc(2 * var(--su));
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.65);
+    line-height: 1.4;
+}
+
+@media (max-aspect-ratio: 3/5) {
+    .slide-thanks-hero {
+        padding-bottom: calc(var(--mobile-pad) + 3.6 * var(--su));
+        padding-left: calc(3.6 * var(--su));
+        padding-right: calc(3.6 * var(--su));
+    }
+}
+
+.iosapp .slide-thanks-hero {
+    padding-bottom: calc(var(--iosapp-vpad) + 3.6 * var(--su));
+    padding-left: calc(var(--iosapp-hpad) + 3.6 * var(--su));
+    padding-right: calc(var(--iosapp-hpad) + 3.6 * var(--su));
 }
