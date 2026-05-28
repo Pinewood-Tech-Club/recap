@@ -1,18 +1,16 @@
-# Hi there, hello
+# Hello there and welcome!
 
-You found the secret thingy in the yearbook! or maybe someone sent you this link directly. either way, you made it.
+You found the "hidden" code in the yearbook! Or maybe someone sent you this link directly. Either way, you made it.
 
-## Some stuff you should know
+## What is this?
 
-This is basically like Spotify wrapped but with pinewood school stuff
+Should you choose to proceed, you'll get to explore a short, Spotify Wrapped-esque recap of select statistics from your semester.
 
-## Missing things
+## Content is missing
 
-Unfortunately, we were unable to get the rosters for spring sports other than boys tennis and baseball. We didn't miss any other sports teams though (hopefully?)
+Unfortunately, we were unable to obtain the spring sports rosters, excluding boys tennis and baseball, as well as the the fall play cast.
 
-Also, the fall play cast was not locatable
-
-If you have any of this email it to techclub@pinewood.edu and we'll try to update it if we can :)
+If you have access to these resources, consider sending them to techclub@pinewood.edu and we'll try to update the experience if possible.
 
 ## Thanks for stopping by!
 
