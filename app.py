@@ -2250,4 +2250,5 @@ def shared_recap(username):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5002)
+    is_prod = os.environ.get("PROD") == "1"
+    app.run(debug=not is_prod, port=5002)
