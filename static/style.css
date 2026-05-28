@@ -207,11 +207,9 @@ body.home-body.no-hover-body {
 }
 
 .terms-wrap h2 {
-  font-size: 13px;
+  font-size: 1.2rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
+  color: var(--bg);
   margin: 40px 0 12px 0;
 }
 

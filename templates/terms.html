@@ -1,9 +1,8 @@
 {% extends "layout.html" %}
-{% block title %}Schoology Recap - Terms{% endblock %}
+{% block title %}Pinewood Recap Terms{% endblock %}
 {% block meta %}
-  <meta property="og:title" content="Schoology Recap - Terms" />
-  <meta property="og:description" content="Schoology Recap is a tool built by students for students. We treat your data with the utmost care and respect. Read our terms to learn more." />
-  <meta property="og:image" content="https://recap.pinewood.one/static/Slide_CTA.png" />
+  <meta property="og:title" content="Pinewood Recap Terms" />
+  <meta property="og:description" content="skibidi toilet why are you reading this for the legal stuff click linky ok thanks bye bye" />
 {% endblock %}
 {% block body_class %}home-body no-hover-body{% endblock %}
 {% block content %}
@@ -12,25 +11,45 @@
   </a>
   <div class="terms-wrap">
     <h1 class="terms-title">Terms of Use</h1>
-    <p class="terms-sub">Pinewood Tech Club &middot; Schoology Recap</p>
+    <p class="terms-sub">Last updated May 27, 2026</p>
 
-    <p>Schoology Recap is a project built by students for students. We treat your data with care and respect.</p>
-    <p><b>We are not affiliated with Schoology or PowerSchool in any way. This is an unofficial tool. Use at your own risk.</b></p>
+    <p><b>We are not affiliated with Schoology or PowerSchool in any way. This is an unofficial tool not endorsed by Pinewood School.</b></p>
+
+    <p>Pinewood Recap is provided as-is, without warranty of any kind. Pinewood Tech Club is not responsible for any errors in your recap data, service interruptions, or any other issues arising from use of this tool.</p>
+
+    <h2>Who can use this</h2>
+    <p>Pinewood Recap is available to Pinewood School students and teachers with a valid Schoology account.</p>
+
+    <h2>What we access</h2>
+    <p>We authenticate via Schoology OAuth and access the following data through their API:</p>
+    <ul>
+      <li><b>Students:</b> assignment submission times, due dates, course names, and grades</li>
+      <li><b>Teachers:</b> grading event timestamps and course names</li>
+      <li>We do not access assignment content, messages, or any other Schoology data</li>
+    </ul>
 
     <h2>What we do with your data</h2>
     <ul>
-      <li>Process your assignment submission times to generate your recap</li>
+      <li>Generate your personalized recap</li>
       <li>Email you when your recap is ready</li>
-      <li>Create anonymous aggregate statistics about student behavior</li>
-      <li>Record anonymous telemetry to improve the product</li>
+      <li>Create anonymous aggregate statistics about submission and grading behavior</li>
+      <li>Record anonymous telemetry (e.g. page load times, errors — no personal data) to improve the product</li>
+    </ul>
+
+    <h2>What we store</h2>
+    <ul>
+      <li>The data shown in your recap — submission or grading timestamps, course names, grades, and your Schoology display name</li>
+      <li>If you participate in extracurriculars, we store the position of your face within matched activity photos, sourced from photo metadata collected under Pinewood's standard school year consent</li>
+      <li>We do not store any other Schoology data</li>
     </ul>
 
     <h2>What we don't do</h2>
     <ul>
-      <li>Store any Schoology data beyond the statistics shown in your recap</li>
       <li>Sell or share your data with any third parties beyond those listed below</li>
-      <li>Access content — we only look at submission times, course names, and grades</li>
     </ul>
+
+    <h2>Data retention</h2>
+    <p>Your recap data is retained indefinitely. To request deletion, contact us at <a href="mailto:techclub@pinewood.edu">techclub@pinewood.edu</a>.</p>
 
     <h2>Hosting</h2>
     <p>This service runs on a computer owned by Pinewood School, operated on Pinewood School networks. Your data does not leave Pinewood infrastructure except as described below.</p>
@@ -38,7 +57,7 @@
     <h2>Third-party services</h2>
     <ul>
       <li><a href="https://cloudflare.com/">Cloudflare</a> — DNS and network tunneling. Cloudflare may receive your IP address and encrypted traffic metadata in transit. <a href="https://www.cloudflare.com/privacypolicy/">Privacy Policy</a></li>
-      <li><a href="https://schoology.com/">Schoology</a> — assignment data via their API. <a href="https://www.schoology.com/privacy">Privacy Policy</a></li>
+      <li><a href="https://schoology.com/">Schoology</a> — authentication and assignment data via their API. <a href="https://www.schoology.com/privacy">Privacy Policy</a></li>
     </ul>
 
     <p>Questions? Contact us at <a href="mailto:techclub@pinewood.edu">techclub@pinewood.edu</a>.</p>
