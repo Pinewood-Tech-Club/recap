@@ -12,6 +12,6 @@ Unfortunately, we were unable to obtain the spring sports rosters, excluding boy
 
 If you have access to these resources, consider sending them to techclub@pinewood.edu and we'll try to update the experience if possible.
 
-## Thanks for stopping by!
+# Thanks for stopping by!
 
-# From the [Pinewood Tech Club](https://techclub.pw)
+## From the [Pinewood Tech Club](https://techclub.pw)
