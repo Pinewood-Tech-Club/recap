@@ -2158,7 +2158,7 @@ def job_ws(ws, job_id):
 
         while True:
             try:
-                message = q.get(timeout=25)
+                message = q.get(timeout=10)
             except queue.Empty:
                 message = get_job_status_snapshot(job_id)
 

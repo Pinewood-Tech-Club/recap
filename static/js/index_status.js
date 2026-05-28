@@ -105,26 +105,73 @@
     }
 
     var finished = false;
+    var ws = null;
+    var reconnectTimer = null;
+    var reconnectAttempt = 0;
+    var socketGeneration = 0;
 
     var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var ws = new WebSocket(protocol + '//' + location.host + '/ws/job/' + recapId);
+    var wsUrl = protocol + '//' + location.host + '/ws/job/' + recapId;
 
-    ws.onmessage = function (event) {
-        var message;
-        try { message = JSON.parse(event.data); } catch (e) { return; }
-        if (message.status === 'done' || message.status === 'error') finished = true;
-        handleMessage(message);
-    };
+    function clearReconnectTimer() {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+    }
 
-    ws.onerror = function () {
+    function scheduleReconnect() {
+        if (finished || reconnectTimer) return;
+        var delay = Math.min(10000, 500 * Math.pow(1.7, reconnectAttempt));
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(function () {
+            reconnectTimer = null;
+            connectWebSocket();
+        }, delay);
+    }
+
+    function connectWebSocket() {
         if (finished) return;
-        setStatus('Connection error. Click <a href="javascript:location.reload()">here</a> to refresh.');
-        setHint(null);
-    };
+        clearReconnectTimer();
 
-    ws.onclose = function () {
-        if (finished) return;
-        setStatus('Connection lost. Click <a href="javascript:location.reload()">here</a> to refresh.');
-        setHint(null);
-    };
+        var generation = ++socketGeneration;
+        try {
+            ws = new WebSocket(wsUrl);
+        } catch (e) {
+            scheduleReconnect();
+            return;
+        }
+
+        ws.onopen = function () {
+            if (generation !== socketGeneration) return;
+            reconnectAttempt = 0;
+        };
+
+        ws.onmessage = function (event) {
+            if (generation !== socketGeneration) return;
+            var message;
+            try { message = JSON.parse(event.data); } catch (e) { return; }
+            if (message.status === 'done' || message.status === 'error') finished = true;
+            handleMessage(message);
+        };
+
+        ws.onerror = function () {
+            if (generation !== socketGeneration || finished) return;
+            try { ws.close(); } catch (e) {}
+        };
+
+        ws.onclose = function () {
+            if (generation !== socketGeneration || finished) return;
+            scheduleReconnect();
+        };
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible' || finished) return;
+        if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+            connectWebSocket();
+        }
+    });
+
+    connectWebSocket();
 }());

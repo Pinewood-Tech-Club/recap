@@ -602,6 +602,7 @@ function _buildSenioritis(senioritis) {
 
     const el = document.createElement('div');
     el.id = 'slide-senioritis';
+    el.dataset.recapSlide = '';
     el.className = 'slide-base';
     el.style.display = 'none';
     el.innerHTML = `
@@ -777,6 +778,7 @@ function _buildActivitySlides(activities) {
         const id = `slide-activity-${i}`;
         const el = document.createElement('div');
         el.id = id;
+        el.dataset.recapSlide = '';
         el.style.display = 'none';
 
         const bgPos = d.face_pos ? `${d.face_pos.x}% ${d.face_pos.y}%` : 'center 30%';
