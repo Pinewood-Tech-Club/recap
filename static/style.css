@@ -121,7 +121,7 @@ body.home-body.no-hover-body {
 }
 
 .iosapp .home-wrap {
-  padding-top: calc(clamp(40px, 8vw, 80px) + env(safe-area-inset-top, 16px));
+  padding-top: calc(clamp(40px, 8vw, 80px) + 3rem);
 }
 
 .home-title {

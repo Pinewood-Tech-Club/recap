@@ -1812,7 +1812,6 @@ _updateDownloadBtn();
                 tracks.push({ track: buildTrack(photos, 67, 16.5), y: 0, stepFactor: 1.0 });
             }
 
-            const step = container.offsetHeight * 0.2;
             let flip = 1;
 
             function applyRotations() {
@@ -1828,6 +1827,7 @@ _updateDownloadBtn();
             applyRotations();
 
             intervalId = setInterval(() => {
+                const step = (container.offsetHeight || container.getBoundingClientRect().height) * 0.2;
                 tracks.forEach(state => {
                     state.y += step * state.stepFactor;
                     const half = state.track.scrollHeight / 2;
@@ -1849,4 +1849,19 @@ _updateDownloadBtn();
     }
 
     containers.forEach(_setupPhotoContainer);
+})();
+
+
+(function () {
+
+var params = new URLSearchParams(window.location.search);
+
+if (params.get("iosapp") === "1") {
+
+    document.documentElement.classList.add("iosapp");
+
+    document.body.classList.add("iosapp");
+
+}
+
 })();
