@@ -27,6 +27,7 @@ from flask import (
     request,
     url_for,
     jsonify,
+    make_response,
     session,
     send_from_directory,
 )
@@ -1776,8 +1777,12 @@ def index():
             else:
                 session.pop("recap_id", None)
                 recap_id = None
-    ios_app = request.args.get("iosapp") == "1"
-    return render_template("index.html", user_name=user_name, recap_id=recap_id, recap_ready=recap_ready, ios_app=ios_app)
+    ios_app = request.args.get("iosapp") == "1" or request.cookies.get("iosapp") == "1"
+    error = request.args.get("error")
+    resp = make_response(render_template("index.html", user_name=user_name, recap_id=recap_id, recap_ready=recap_ready, ios_app=ios_app, error=error))
+    if request.args.get("iosapp") == "1":
+        resp.set_cookie("iosapp", "1", max_age=60*60*24*365, samesite="Lax", httponly=True)
+    return resp
 
 
 @app.route("/auth/logout")
@@ -1892,7 +1897,8 @@ def auth_activate_code():
         data["access_token"],
         data["access_token_secret"],
     )
-    dest = "/?iosapp=1" if request.args.get("iosapp") == "1" else "/"
+    is_ios = request.args.get("iosapp") == "1" or request.cookies.get("iosapp") == "1"
+    dest = "/?iosapp=1" if is_ios else "/"
     return redirect(dest)
 
 
@@ -1940,6 +1946,9 @@ def auth_callback():
     sc = schoolopy.Schoology(auth)
     me = sc.get_me()
     email = getattr(me, "primary_email", None)
+
+    if not email or not email.endswith("@pinewood.edu"):
+        return redirect(url_for("index", error="invalid_domain"))
 
     if is_mobile:
         # Store session data under a short-lived code; redirect to the custom

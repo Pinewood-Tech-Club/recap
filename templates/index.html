@@ -10,6 +10,16 @@
   <h1 class="home-title">Pinewood<br>Recap</h1>
   <div class="home-sub">By the <span style="color: var(--accent); font-weight: 600;"><a href="https://techclub.pw" target="_blank">Pinewood Tech Club</a></span></div>
 
+  {% if error %}
+    <div class="home-error">
+      {% if error == "invalid_domain" %}
+        Recap is only available to Pinewood students and staff. Please sign in with your <strong>@pinewood.edu</strong> Schoology account.
+      {% else %}
+        Something went wrong signing you in. Please try again.
+      {% endif %}
+    </div>
+  {% endif %}
+
   {% if recap_id %}
     <a class="button home-btn{% if not recap_ready %} disabled{% endif %}" href="/recap/{{ recap_id }}" id="recap-btn">
       <span class="home-btn-progress" id="btn-progress"></span>

@@ -17,7 +17,8 @@
     />
     <link rel="preload" as="image" href="/static/imag/const_paper.webp" />
     <script>
-      if (new URLSearchParams(location.search).get("iosapp") === "1") {
+      if (new URLSearchParams(location.search).get("iosapp") === "1" ||
+          document.cookie.split(';').some(function(c) { return c.trim() === 'iosapp=1'; })) {
         document.documentElement.classList.add("iosapp");
       }
     </script>
