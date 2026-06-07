@@ -1,0 +1,75 @@
+{% extends "layout.html" %}
+{% block title %}Pinewood Recap Credits{% endblock %}
+{% block meta %}
+  <meta property="og:title" content="Pinewood Recap Credits" />
+{% endblock %}
+{% block body_class %}home-body no-hover-body{% endblock %}
+{% block content %}
+  <a href="{{ url_for('index') }}" class="terms-back" aria-label="Back">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+  </a>
+  <div class="terms-wrap">
+    <h1 class="terms-title">Credits</h1>
+    <p class="terms-sub">Pinewood Recap wouldn't exist without a lot of people. Thank you.</p>
+
+    <div class="credits-built">
+      <div class="credits-person">
+        <div class="credits-name">Adam Xu</div>
+        <div class="credits-role">Development</div>
+      </div>
+      <div class="credits-person">
+        <div class="credits-name">Howard Kent</div>
+        <div class="credits-role">Design &amp; Development</div>
+      </div>
+    </div>
+
+    <h2>Pinewood Tech Club</h2>
+    <p>Thank you to the rest of the club for ideas, feedback, and moral support throughout.</p>
+    <p class="credits-members">Denis Koterov &middot; Max Ganev &middot; Andrew Li &middot; Arudran Prabhakaran &middot; Matvei Sokoloff</p>
+
+    <h2>Special Thanks</h2>
+
+    <div class="credits-thanks-item">
+      <strong>Mr. Mark</strong>
+      <p>Club advisor &mdash; for supporting the Tech Club and everything we do.</p>
+    </div>
+
+    <div class="credits-thanks-item">
+      <strong>Mr. Bates</strong>
+      <p>For spending hours helping set up the server, getting Schoology OAuth working with the school's systems, and shepherding the app through the App Store — this project genuinely wouldn't exist without him.</p>
+    </div>
+
+    <div class="credits-thanks-item">
+      <strong>Mr. Clark</strong>
+      <p>IT support and infrastructure assistance.</p>
+    </div>
+
+    <div class="credits-thanks-item">
+      <strong>Ms. Kulbieda</strong>
+      <p>Principal, Pinewood School &mdash; for approving this project and offering thoughtful feedback along the way.</p>
+    </div>
+
+    <h2>School Photos</h2>
+    <p>Photos are courtesy of the <strong>Pinewood Yearbook</strong> team and the student photographers who contribute to <a href="https://photos.pinewood.edu/">photos.pinewood.edu</a>. Thank you for documenting the year so well.</p>
+
+    <h2>Open Source</h2>
+    <p class="credits-oss">
+      <a href="https://flask.palletsprojects.com/">Flask</a> &middot;
+      <a href="https://github.com/SchoolPower/schoolopy">schoolopy</a> &middot;
+      <a href="https://python-pillow.org/">Pillow</a> &middot;
+      <a href="https://cairosvg.org/">CairoSVG</a> &middot;
+      <a href="https://flask-sock.readthedocs.io/">flask-sock</a> &middot;
+      <a href="https://requests.readthedocs.io/">requests</a> &middot;
+      <a href="https://boto3.amazonaws.com/">boto3</a> &middot;
+      <a href="https://gsap.com/">GSAP</a> &middot;
+      <a href="https://github.com/bubkoo/html-to-image">html-to-image</a> &middot;
+      <a href="https://rsms.me/inter/">Inter</a> (Rasmus Andersson)
+    </p>
+
+    <h2>Asset Credits</h2>
+    <ul>
+      <li>Crinkled paper texture by <a href="https://pngtree.com/freepng/sunshine-toned-backdrop-featuring-crinkled-paper-texture-in-vibrant-hues-overlay_14983710.html">tree via pngtree.com</a></li>
+      <li>Paper clip illustration from <a href="https://gallery.yopriceville.com/Free-Clipart-Pictures/School-Clipart/Paper_Clip_PNG_Clipart_Image">Gallery Yopriceville</a></li>
+    </ul>
+  </div>
+{% endblock %}

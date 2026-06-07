@@ -183,7 +183,7 @@ body.home-body.no-hover-body {
 }
 
 .terms-wrap {
-  padding: clamp(40px, 8vw, 80px) clamp(32px, 8vw, 80px);
+  padding: clamp(80px, 10vw, 100px) clamp(32px, 8vw, 80px) clamp(40px, 8vw, 80px);
   max-width: 640px;
   width: 100%;
   margin: 0 auto;
@@ -259,6 +259,81 @@ body.home-body.no-hover-body {
 .terms-back:hover {
   background: rgba(0, 0, 0, 0.07) !important;
   color: var(--text) !important;
+}
+
+.credits-built {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  margin: 0 0 48px 0;
+  flex-wrap: wrap;
+}
+
+.credits-person {
+  text-align: center;
+  flex: 1;
+  min-width: 140px;
+}
+
+.credits-name {
+  font-family: 'Noto Serif', Georgia, serif;
+  font-size: clamp(22px, 4vw, 28px);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+
+.credits-role {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.credits-members {
+  font-size: 15px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 0 0 16px 0;
+}
+
+.credits-thanks-item {
+  margin: 0 0 28px 0;
+}
+
+.credits-thanks-item strong {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.credits-thanks-item p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.credits-oss {
+  font-size: 13px !important;
+  color: var(--muted) !important;
+  line-height: 2 !important;
+}
+
+.home-footer {
+  font-size: 17px;
+  color: var(--text);
+  margin: 32px 0 0 0;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.home-footer a {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .home-meta {

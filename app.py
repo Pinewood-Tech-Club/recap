@@ -2231,6 +2231,11 @@ def terms():
     return render_template("terms.html")
 
 
+@app.route("/credits")
+def credits():
+    return render_template("credits.html")
+
+
 @app.route("/s/<username>")
 def shared_recap(username):
     """Shared recap view for username (e.g., /s/28axu for 28axu@pinewood.edu)."""

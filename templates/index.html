@@ -33,7 +33,7 @@
       {% endif %}
     </div>
     <div class="home-status" id="recap-hint" style="display:none"></div>
-    <div class="home-meta">Not you? <a href="/auth/logout">Log Out</a> or <a href="/terms">View Terms</a>.</div>
+    <div class="home-meta">Not you? <a href="/auth/logout">Log Out</a></div>
     <div class="home-photos">
       {% if ios_app %}
       <a href="/photos" class="photo-grid" id="photo-grid" aria-label="View Photos">
@@ -151,6 +151,9 @@
       }
     </script>
   {% endif %}
+  <div class="home-footer">
+    <a href="/terms">Terms</a> &middot; <a href="/credits">Credits</a> &middot; <a href="https://github.com/Pinewood-Tech-Club/recap" target="_blank" rel="noopener">Open source</a>
+  </div>
 </div>
 
 <div id="intro-overlay" style="display:none">
