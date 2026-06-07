@@ -81,7 +81,12 @@
         }
         if (status === 'error') {
             setProgress(0);
-            setStatus('Something went wrong. Click <a href="javascript:location.reload()">here</a> to refresh.');
+            if (msg.progress && msg.progress.error_type === 'no_data') {
+                setStatus("We weren’t able to generate a recap for you. Pinewood Recap could not locate your data. This could be due to Schoology privacy settings. Email <a href=\"mailto:techclub@pinewood.edu\">techclub@pinewood.edu</a> if you believe this is in error.");
+                if (btn) btn.classList.add('disabled');
+            } else {
+                setStatus('Something went wrong. Click <a href="javascript:location.reload()">here</a> to refresh.');
+            }
             setHint(null);
             return;
         }

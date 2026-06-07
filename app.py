@@ -60,6 +60,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
+
+
+class RecapDataError(Exception):
+    """Raised when user data is missing or inaccessible (e.g. privacy settings)."""
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -727,11 +731,13 @@ def worker():
             # Notify completion after deletion so active_count excludes this job.
             notify_progress(job_id, {"status": "done"})
             send_recap_email(job["email"], job_id)
+        except RecapDataError as exc:
+            logger.warning("Job %s: no data — %s", job_id, exc)
+            notify_progress(job_id, {"status": "error", "error_type": "no_data", "error": str(exc)})
+            delete_job(job_id)
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Job %s failed", job_id)
-            # Notify error
             notify_progress(job_id, {"status": "error", "error": str(exc)})
-            # Delete job from queue (don't leave failed jobs)
             delete_job(job_id)
 
 
@@ -1646,6 +1652,9 @@ def build_recap(payload):
 
     notify_progress(job_id, {"status": "running", "stage": "sections", "count": len(sections)})
 
+    if not sections:
+        raise RecapDataError("No Schoology sections found. This may be due to account privacy settings.")
+
     section_ids = [s.id for s in sections]
     section_lookup = {s.id: s for s in sections}
 
@@ -1672,6 +1681,10 @@ def build_recap(payload):
     assignments_by_section = defaultdict(list)
     for sid in section_ids:
         assignments_by_section[sid] = [to_obj(a) for a in raw_assignments.get(str(sid), [])]
+
+    total_assignments_found = sum(len(v) for v in assignments_by_section.values())
+    if total_assignments_found == 0:
+        raise RecapDataError("No assignments found across all sections. This may be due to account privacy settings.")
 
     # Push per-section assignment lists to clients for the debug/stream view
     total_sections = len(sections)
