@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+{% block title %}Schoology Recap{% endblock %}
+{% block body_class %}home-body{% if ios_app %} iosapp{% endif %}{% endblock %}
+{% block meta %}
+  <meta property="og:title" content="Pinewood Recap" />
+{% endblock %}
+{% block content %}
+<div class="home-wrap">
+  <h1 class="home-title">Pinewood<br>Recap</h1>
+  <div class="home-sub">By the <span style="color: var(--accent); font-weight: 600;"><a href="https://techclub.pw" target="_blank">Pinewood Tech Club</a></span></div>
+
+  {% if had_recap %}
+    <div class="home-status" style="margin-top: 2rem; font-size: 1.1rem;">
+      Your recap is still out there! Check your email&nbsp;&mdash; the link we sent you still works.
+    </div>
+    <div class="home-meta" style="margin-top: 0.75rem;">
+      New recap generation is closed, but your link is permanent.
+    </div>
+  {% else %}
+    <div class="home-status" style="margin-top: 2rem; font-size: 1.2rem; font-weight: 600;">
+      Sorry, you missed out! :(
+    </div>
+    <div class="home-meta" style="margin-top: 0.75rem;">
+      Recap generation has closed for this year. See you next year!
+    </div>
+  {% endif %}
+
+  <div class="home-photos" style="margin-top: 2.5rem;">
+    <div class="home-meta" style="margin-bottom: 0.5rem;">
+      You can still browse photos if that's more your jam&nbsp;:)
+    </div>
+    {% if ios_app %}
+    <a href="/photos" class="photo-grid" id="photo-grid" aria-label="View Photos">
+      <div class="photo-fan-caption" style="margin-top:0;margin-bottom:10px;">View Photos</div>
+      <div id="photo-grid-cells"></div>
+    </a>
+    <script>
+      (function() {
+        var pool = [
+          "https://photos.recap.pinewood.one/robotics/SF_District_Event/IMG_4630.webp",
+          "https://photos.recap.pinewood.one/img/China_Trip_2026/IMG_1215.webp",
+          "https://photos.recap.pinewood.one/img/Girls_Basketball_Senior_Night_21026/PWGirlsBBSeniorNight-2026-15.webp",
+          "https://photos.recap.pinewood.one/img/Boys_Soccer_v._Kings_Academy_11426/DSC06079.webp",
+          "https://photos.recap.pinewood.one/img/Senior_Class_Rafting_Trip_Fall_25/08-19-2025_sfa_hb_twt_0007_0029_hi.webp",
+          "https://photos.recap.pinewood.one/img/Lip_Sync_26/PW-LipSynch2026-54.webp",
+          "https://photos.recap.pinewood.one/yearbook/Sports/Panther_Pit/IMG_0716.webp",
+          "https://photos.recap.pinewood.one/img/Prom_2026/DSC08979.webp",
+          "https://photos.recap.pinewood.one/img/High_School_Winter_Formal_12426/DSC02811.webp",
+          "https://photos.recap.pinewood.one/img/Am%C3%A9lie_Spring_Musical_2026/DSC06470.webp",
+          "https://photos.recap.pinewood.one/img/HOCO_Dance_10425/DSC01244.webp"
+        ];
+        for (var i = pool.length - 1; i > 0; i--) {
+          var j = Math.floor(Math.random() * (i + 1));
+          var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
+        }
+        var picks = pool.slice(0, 3);
+        var grid = document.getElementById('photo-grid-cells');
+        picks.forEach(function(src) {
+          var cell = document.createElement('div');
+          cell.className = 'photo-grid-cell';
+          var img = document.createElement('img');
+          img.src = src; img.alt = ''; img.loading = 'lazy';
+          cell.appendChild(img);
+          grid.appendChild(cell);
+        });
+        var more = document.createElement('div');
+        more.className = 'photo-grid-cell photo-grid-cell-more';
+        more.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg><span>19,143 more</span>';
+        grid.appendChild(more);
+      })();
+    </script>
+    {% else %}
+    <a href="/photos" class="photo-fan" id="photo-fan" aria-label="View Photos">
+      <div id="photo-fan-cards" style="position:relative;width:220px;height:230px;"></div>
+      <div class="photo-fan-caption">View Photos</div>
+    </a>
+    <script>
+      (function() {
+        var pool = [
+          "https://photos.recap.pinewood.one/robotics/SF_District_Event/IMG_4630.webp",
+          "https://photos.recap.pinewood.one/img/China_Trip_2026/IMG_1215.webp",
+          "https://photos.recap.pinewood.one/img/Girls_Basketball_Senior_Night_21026/PWGirlsBBSeniorNight-2026-15.webp",
+          "https://photos.recap.pinewood.one/img/Boys_Soccer_v._Kings_Academy_11426/DSC06079.webp",
+          "https://photos.recap.pinewood.one/img/Senior_Class_Rafting_Trip_Fall_25/08-19-2025_sfa_hb_twt_0007_0029_hi.webp",
+          "https://photos.recap.pinewood.one/img/Lip_Sync_26/PW-LipSynch2026-54.webp",
+          "https://photos.recap.pinewood.one/yearbook/Sports/Panther_Pit/IMG_0716.webp",
+          "https://photos.recap.pinewood.one/img/Prom_2026/DSC08979.webp",
+          "https://photos.recap.pinewood.one/img/High_School_Winter_Formal_12426/DSC02811.webp",
+          "https://photos.recap.pinewood.one/img/Am%C3%A9lie_Spring_Musical_2026/DSC06470.webp",
+          "https://photos.recap.pinewood.one/img/HOCO_Dance_10425/DSC01244.webp"
+        ];
+        for (var i = pool.length - 1; i > 0; i--) {
+          var j = Math.floor(Math.random() * (i + 1));
+          var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
+        }
+        var picks = pool.slice(0, 3);
+        var positions = ['fan-left', 'fan-center', 'fan-right'];
+        var fan = document.getElementById('photo-fan-cards');
+        positions.forEach(function(pos, i) {
+          var card = document.createElement('div');
+          card.className = 'photo-fan-card ' + pos;
+          var img = document.createElement('img');
+          img.src = picks[i]; img.alt = ''; img.loading = 'lazy';
+          card.appendChild(img);
+          fan.appendChild(card);
+        });
+      })();
+    </script>
+    {% endif %}
+  </div>
+
+  <div class="home-footer">
+    <a href="/terms">Terms</a> &middot; <a href="/credits">Credits</a> &middot; <a href="https://github.com/Pinewood-Tech-Club/recap" target="_blank" rel="noopener">Open source</a>
+  </div>
+</div>
+{% endblock %}

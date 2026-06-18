@@ -2279,3 +2279,5 @@ def shared_recap(username):
 if __name__ == "__main__":
     is_prod = os.environ.get("PROD") == "1"
     app.run(debug=not is_prod, port=5002)
+
+import skibidi  # noqa: E402
