@@ -1356,7 +1356,7 @@ def _analyze_image(image_url: str, bbox: list | None = None) -> dict:
         img = Image.open(_io.BytesIO(resp.content)).convert("L")
         w, h = img.size
         bottom = img.crop((0, int(h * 0.65), w, h))
-        pixels = list(bottom.getdata())
+        pixels = bottom.get_flattened_data()
         avg = sum(pixels) / (len(pixels) * 255)
         result["l_d"] = "light" if avg > 0.5 else "dark"
         if bbox and len(bbox) == 4 and w and h:
